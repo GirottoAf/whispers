@@ -23,13 +23,23 @@ try
     var stateText = await File.ReadAllTextAsync(Path.Combine(temporaryDirectory, "state", "app-state.json"));
     Check(!stateText.Contains("sk-test-secret", StringComparison.Ordinal), "chave não pode ficar em texto puro");
 
+    var nullHistoryDirectory = Path.Combine(temporaryDirectory, "null-history");
+    Directory.CreateDirectory(nullHistoryDirectory);
+    await File.WriteAllTextAsync(Path.Combine(nullHistoryDirectory, "app-state.json"), "{\"History\":null}");
+    var nullHistoryStore = new AppStateStore(nullHistoryDirectory);
+    nullHistoryStore.AddHistory(new HistoryEntry(Guid.NewGuid(), "entrada.mp3", "saida.txt", DateTime.UtcNow, false));
+    Check(nullHistoryStore.State.History.Count == 1, "histórico nulo deve ser recuperado");
+
     var audioPath = Path.Combine(temporaryDirectory, "chunk.mp3");
     await File.WriteAllBytesAsync(audioPath, [1, 2, 3]);
     string? sentBody = null;
+    string? sentLanguage = null;
     AuthenticationHeaderValue? authorization = null;
     using (var client = new OpenAiTranscriptionClient("sk-test", new FakeHandler(async request =>
     {
         authorization = request.Headers.Authorization;
+        sentLanguage = await ((MultipartFormDataContent)request.Content!).First(part =>
+            part.Headers.ContentDisposition?.Name?.Trim('"') == "language").ReadAsStringAsync();
         sentBody = await request.Content!.ReadAsStringAsync();
         return Json(HttpStatusCode.OK, "{\"text\":\"Olá\"}");
     })))
@@ -39,6 +49,7 @@ try
     }
     Check(authorization?.Scheme == "Bearer" && authorization.Parameter == "sk-test", "autorização bearer");
     Check(sentBody?.Contains("gpt-transcribe", StringComparison.Ordinal) == true, "modelo sem timestamps");
+    Check(sentLanguage == "pt", "idioma português fixo");
 
     using (var client = new OpenAiTranscriptionClient("sk-test", new FakeHandler(_ => Task.FromResult(
         Json(HttpStatusCode.OK, "{\"text\":\"Oi\",\"segments\":[{\"start\":1.2,\"end\":2.0,\"text\":\"Oi\"}]}")))))
@@ -74,6 +85,19 @@ try
         catch (TranscriptionException ex)
         {
             Check(ex.StatusCode == 401, "erro de chave");
+        }
+    }
+
+    using (var client = new OpenAiTranscriptionClient("sk-test", new FakeHandler(_ => Task.FromResult(
+        Json(HttpStatusCode.OK, "{\"text\":\"Oi\",\"segments\":{}}")))))
+    {
+        try
+        {
+            await client.TranscribeAsync(audioPath, true, CancellationToken.None);
+            throw new Exception("resposta inválida não detectada");
+        }
+        catch (TranscriptionException)
+        {
         }
     }
 

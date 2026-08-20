@@ -12,7 +12,7 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 - Aplicativo WPF self-contained em .NET 8, distribuído em instalador EXE sem assinatura.
 - Cada usuário fornece sua própria chave e assume a cobrança da API OpenAI.
 - Sem timestamp usa `gpt-transcribe`; com timestamp usa `whisper-1`, que permanece disponível e suporta timestamps por segmento.
-- Apenas a primeira faixa de áudio é usada. O idioma é detectado automaticamente.
+- Apenas a primeira faixa de áudio é usada. O idioma é fixo em português brasileiro (`language=pt`, conforme ISO-639-1).
 - Atualizações são obtidas manualmente no GitHub Releases.
 
 ## 3. Requisitos funcionais
@@ -28,7 +28,7 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 
 - Uma aplicação WPF com code-behind e serviços concretos, sem MVVM, DI, banco ou SDK OpenAI.
 - FFmpeg converte a primeira faixa para MP3 mono, 16 kHz, 64 kbps, em partes de até 20 minutos.
-- `POST https://api.openai.com/v1/audio/transcriptions` recebe cada parte sequencialmente.
+- `POST https://api.openai.com/v1/audio/transcriptions` recebe cada parte sequencialmente com `language=pt`.
 - Modo simples: `model=gpt-transcribe`, JSON. Modo timestamp: `model=whisper-1`, `response_format=verbose_json`, `timestamp_granularities[]=segment`.
 - TXT simples concatena o texto dos chunks. TXT com timestamp usa `[HH:MM:SS] texto`, aplicando o deslocamento global do chunk.
 - `%LocalAppData%\Whispers\app-state.json` contém a chave protegida e o histórico; o conteúdo transcrito não é armazenado ali.

@@ -33,6 +33,7 @@ public sealed class OpenAiTranscriptionClient : IDisposable
                 audio.Headers.ContentType = new MediaTypeHeaderValue("audio/mpeg");
                 form.Add(audio, "file", Path.GetFileName(audioPath));
                 form.Add(new StringContent(timestamps ? "whisper-1" : "gpt-transcribe"), "model");
+                form.Add(new StringContent("pt"), "language");
                 if (timestamps)
                 {
                     form.Add(new StringContent("verbose_json"), "response_format");
@@ -50,7 +51,7 @@ public sealed class OpenAiTranscriptionClient : IDisposable
                     continue;
                 }
 
-                throw CreateApiException(response.StatusCode, body);
+                throw CreateApiException(response.StatusCode);
             }
             catch (HttpRequestException) when (attempt < 3)
             {
@@ -90,7 +91,7 @@ public sealed class OpenAiTranscriptionClient : IDisposable
                 throw new JsonException();
             return new ChunkTranscript(text, segments);
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
         {
             throw new TranscriptionException("A OpenAI retornou uma resposta de transcrição inválida.") { Source = ex.Source };
         }
@@ -108,7 +109,7 @@ public sealed class OpenAiTranscriptionClient : IDisposable
             ? delay.Value : TimeSpan.FromSeconds(attempt);
     }
 
-    private static TranscriptionException CreateApiException(HttpStatusCode statusCode, string body)
+    private static TranscriptionException CreateApiException(HttpStatusCode statusCode)
     {
         var message = statusCode switch
         {

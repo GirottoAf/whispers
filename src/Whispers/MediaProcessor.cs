@@ -38,18 +38,25 @@ public sealed class MediaProcessor
         if (result.ExitCode != 0)
             throw new InvalidDataException("O arquivo não pôde ser lido ou está corrompido.");
 
-        using var json = JsonDocument.Parse(result.StandardOutput);
-        var root = json.RootElement;
-        if (!root.TryGetProperty("streams", out var streams) || streams.GetArrayLength() == 0)
-            throw new InvalidDataException("O arquivo selecionado não possui uma faixa de áudio.");
+        try
+        {
+            using var json = JsonDocument.Parse(result.StandardOutput);
+            var root = json.RootElement;
+            if (!root.TryGetProperty("streams", out var streams) || streams.GetArrayLength() == 0)
+                throw new InvalidDataException("O arquivo selecionado não possui uma faixa de áudio.");
 
-        if (!root.TryGetProperty("format", out var format) ||
-            !format.TryGetProperty("duration", out var durationElement) ||
-            !double.TryParse(durationElement.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) ||
-            seconds <= 0)
-            throw new InvalidDataException("Não foi possível determinar a duração do arquivo.");
+            if (!root.TryGetProperty("format", out var format) ||
+                !format.TryGetProperty("duration", out var durationElement) ||
+                !double.TryParse(durationElement.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) ||
+                seconds <= 0)
+                throw new InvalidDataException("Não foi possível determinar a duração do arquivo.");
 
-        return new MediaInfo(TimeSpan.FromSeconds(seconds), new FileInfo(inputPath).Length);
+            return new MediaInfo(TimeSpan.FromSeconds(seconds), new FileInfo(inputPath).Length);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            throw new InvalidDataException("O FFprobe retornou informações inválidas para este arquivo.", ex);
+        }
     }
 
     public async Task<PreparedMedia> PrepareAsync(string inputPath, CancellationToken cancellationToken)
@@ -127,7 +134,15 @@ public sealed class MediaProcessor
         }
         catch (OperationCanceledException)
         {
-            try { process.Kill(true); } catch { }
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(true);
+                    await process.WaitForExitAsync();
+                }
+            }
+            catch { }
             throw;
         }
     }

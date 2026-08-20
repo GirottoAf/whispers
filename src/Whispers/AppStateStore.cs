@@ -77,7 +77,9 @@ public sealed class AppStateStore
 
         try
         {
-            return JsonSerializer.Deserialize<AppState>(File.ReadAllText(_path), JsonOptions) ?? new AppState();
+            var state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(_path), JsonOptions) ?? new AppState();
+            state.History ??= [];
+            return state;
         }
         catch (JsonException)
         {

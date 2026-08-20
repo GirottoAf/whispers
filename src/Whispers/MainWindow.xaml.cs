@@ -229,7 +229,15 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            MessageBox.Show(this, "O Windows não conseguiu abrir este item.", "Não foi possível abrir",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void RemoveHistory_Click(object sender, RoutedEventArgs e)

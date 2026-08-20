@@ -20,7 +20,7 @@
             </Grid.ColumnDefinitions>
             <StackPanel>
                 <TextBlock Text="Whispers" FontSize="30" FontWeight="Bold" Foreground="#202231" />
-                <TextBlock Text="Transcreva arquivos de áudio e vídeo em TXT" Foreground="#65687A" />
+                <TextBlock Text="Transcrição de áudio e vídeo em português brasileiro para TXT" Foreground="#65687A" />
             </StackPanel>
             <Button Grid.Column="1" Content="Configurar chave" Click="ConfigureKey_Click"
                     AutomationProperties.Name="Configurar chave da API OpenAI" />

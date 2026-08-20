@@ -6,6 +6,7 @@ Aplicativo Windows para transcrever arquivos locais de áudio e vídeo em TXT us
 
 - seleção pelo menu do Windows ou arrastar e soltar;
 - áudio e vídeo nos formatos mais comuns;
+- idioma fixo em português brasileiro (`language=pt` na API);
 - texto simples com `gpt-transcribe`;
 - timestamps por segmento com `whisper-1`;
 - arquivos longos convertidos e divididos localmente;
