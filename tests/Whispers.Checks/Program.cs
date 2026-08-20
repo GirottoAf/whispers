@@ -1,0 +1,100 @@
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using Whispers;
+
+var temporaryDirectory = Path.Combine(Path.GetTempPath(), "WhispersChecks", Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(temporaryDirectory);
+
+try
+{
+    Check(OutputFile.FormatTimestamp(3723.9) == "01:02:03", "formatação de timestamp");
+    var firstOutput = OutputFile.CreateUniquePath("reuniao.mp4", true, temporaryDirectory);
+    await File.WriteAllTextAsync(firstOutput, "existente");
+    var secondOutput = OutputFile.CreateUniquePath("reuniao.mp4", true, temporaryDirectory);
+    Check(Path.GetFileName(secondOutput) == "reuniao_timestamps (2).txt", "nome sem sobrescrita");
+
+    var store = new AppStateStore(Path.Combine(temporaryDirectory, "state"));
+    store.SetApiKey("sk-test-secret");
+    store.AddHistory(new HistoryEntry(Guid.NewGuid(), "entrada.mp3", "saida.txt", DateTime.UtcNow, false));
+    var reloaded = new AppStateStore(Path.Combine(temporaryDirectory, "state"));
+    Check(reloaded.GetApiKey() == "sk-test-secret", "DPAPI");
+    Check(reloaded.State.History.Count == 1, "histórico");
+    var stateText = await File.ReadAllTextAsync(Path.Combine(temporaryDirectory, "state", "app-state.json"));
+    Check(!stateText.Contains("sk-test-secret", StringComparison.Ordinal), "chave não pode ficar em texto puro");
+
+    var audioPath = Path.Combine(temporaryDirectory, "chunk.mp3");
+    await File.WriteAllBytesAsync(audioPath, [1, 2, 3]);
+    string? sentBody = null;
+    AuthenticationHeaderValue? authorization = null;
+    using (var client = new OpenAiTranscriptionClient("sk-test", new FakeHandler(async request =>
+    {
+        authorization = request.Headers.Authorization;
+        sentBody = await request.Content!.ReadAsStringAsync();
+        return Json(HttpStatusCode.OK, "{\"text\":\"Olá\"}");
+    })))
+    {
+        var result = await client.TranscribeAsync(audioPath, false, CancellationToken.None);
+        Check(result.Text == "Olá", "resposta simples");
+    }
+    Check(authorization?.Scheme == "Bearer" && authorization.Parameter == "sk-test", "autorização bearer");
+    Check(sentBody?.Contains("gpt-transcribe", StringComparison.Ordinal) == true, "modelo sem timestamps");
+
+    using (var client = new OpenAiTranscriptionClient("sk-test", new FakeHandler(_ => Task.FromResult(
+        Json(HttpStatusCode.OK, "{\"text\":\"Oi\",\"segments\":[{\"start\":1.2,\"end\":2.0,\"text\":\"Oi\"}]}")))))
+    {
+        var result = await client.TranscribeAsync(audioPath, true, CancellationToken.None);
+        Check(result.Segments.Count == 1 && result.Segments[0].Start == 1.2, "segmentos");
+    }
+
+    var attempts = 0;
+    using (var client = new OpenAiTranscriptionClient("sk-test", new FakeHandler(_ =>
+    {
+        attempts++;
+        var response = attempts < 3
+            ? Json(HttpStatusCode.InternalServerError, "{}")
+            : Json(HttpStatusCode.OK, "{\"text\":\"recuperado\"}");
+        if (attempts < 3)
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.Zero);
+        return Task.FromResult(response);
+    })))
+    {
+        var result = await client.TranscribeAsync(audioPath, false, CancellationToken.None);
+        Check(result.Text == "recuperado" && attempts == 3, "retry transitório");
+    }
+
+    using (var client = new OpenAiTranscriptionClient("sk-test", new FakeHandler(_ => Task.FromResult(
+        Json(HttpStatusCode.Unauthorized, "{}")))))
+    {
+        try
+        {
+            await client.TranscribeAsync(audioPath, false, CancellationToken.None);
+            throw new Exception("erro 401 não detectado");
+        }
+        catch (TranscriptionException ex)
+        {
+            Check(ex.StatusCode == 401, "erro de chave");
+        }
+    }
+
+    Console.WriteLine("Whispers checks: OK");
+}
+finally
+{
+    try { Directory.Delete(temporaryDirectory, true); } catch { }
+}
+
+static HttpResponseMessage Json(HttpStatusCode status, string content) =>
+    new(status) { Content = new StringContent(content, System.Text.Encoding.UTF8, "application/json") };
+
+static void Check(bool condition, string name)
+{
+    if (!condition)
+        throw new Exception($"Falhou: {name}");
+}
+
+sealed class FakeHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> responder) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        responder(request);
+}

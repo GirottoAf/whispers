@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Define version
+        shell: pwsh
+        run: |
+          "APP_VERSION=$('${{ github.ref_name }}'.TrimStart('v'))" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Download verified FFmpeg
+        shell: pwsh
+        run: ./scripts/Get-FFmpeg.ps1
+
+      - run: dotnet restore Whispers.sln
+      - run: dotnet build Whispers.sln -c Release --no-restore
+      - run: dotnet run --project tests/Whispers.Checks -c Release --no-build
+
+      - name: Publish application
+        shell: pwsh
+        run: >-
+          dotnet publish src/Whispers/Whispers.csproj -c Release -r win-x64
+          --self-contained true --no-restore -o artifacts/publish
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None -p:Version=$env:APP_VERSION
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          & $iscc "/DMyAppVersion=$env:APP_VERSION" installer/Whispers.iss
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ github.ref_name }}"
+          artifacts/installer/Whispers-Setup-x64.exe
+          --verify-tag --generate-notes --title "Whispers ${{ github.ref_name }}"

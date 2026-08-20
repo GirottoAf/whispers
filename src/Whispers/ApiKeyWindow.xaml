@@ -1,0 +1,30 @@
+<Window x:Class="Whispers.ApiKeyWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Chave da API OpenAI" Height="330" Width="560"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False">
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock FontSize="22" FontWeight="SemiBold" Text="Configure sua chave da OpenAI" />
+        <TextBlock Grid.Row="1" Margin="0,12,0,16" Foreground="#555"
+                   Text="A chave será protegida pelo Windows para este usuário. Os arquivos selecionados serão enviados à OpenAI para transcrição e poderão gerar cobrança na sua conta." />
+        <PasswordBox x:Name="ApiKeyBox" Grid.Row="2" Height="38" Padding="10,7"
+                     ToolTip="Cole sua chave da API OpenAI" />
+        <TextBlock Grid.Row="3" Margin="0,10,0,0" Foreground="#666" FontSize="12"
+                   Text="A chave nunca será exibida novamente nem gravada em logs." />
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="DeleteButton" Content="Remover chave" Click="Delete_Click" Visibility="Collapsed" />
+            <Button Content="Cancelar" IsCancel="True" />
+            <Button Content="Salvar" IsDefault="True" Click="Save_Click"
+                    Background="{StaticResource AccentBrush}" Foreground="White" />
+        </StackPanel>
+    </Grid>
+</Window>

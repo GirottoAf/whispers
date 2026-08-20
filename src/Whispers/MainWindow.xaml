@@ -1,0 +1,105 @@
+<Window x:Class="Whispers.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Whispers" Width="960" Height="760" MinWidth="760" MinHeight="620"
+        WindowStartupLocation="CenterScreen" AllowDrop="True"
+        PreviewDragOver="Window_PreviewDragOver" Drop="Window_Drop">
+    <Grid Background="#F6F7FB">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Margin="28,24,28,18">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="Whispers" FontSize="30" FontWeight="Bold" Foreground="#202231" />
+                <TextBlock Text="Transcreva arquivos de áudio e vídeo em TXT" Foreground="#65687A" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Configurar chave" Click="ConfigureKey_Click"
+                    AutomationProperties.Name="Configurar chave da API OpenAI" />
+        </Grid>
+
+        <Border Grid.Row="1" Margin="28,0,28,18" Padding="26" Background="White"
+                BorderBrush="#C8CAE8" BorderThickness="2" CornerRadius="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="Arraste um arquivo aqui" FontSize="19" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" />
+                <TextBlock Grid.Row="1" Text="ou escolha um arquivo de áudio ou vídeo"
+                           Margin="0,5,0,12" Foreground="#65687A" HorizontalAlignment="Center" />
+                <Button x:Name="SelectButton" Grid.Row="2" Content="Selecionar arquivo"
+                        HorizontalAlignment="Center" Click="SelectFile_Click" />
+                <StackPanel Grid.Row="3" Margin="0,14,0,0">
+                    <TextBlock x:Name="SelectedFileText" Text="Nenhum arquivo selecionado"
+                               FontWeight="SemiBold" TextAlignment="Center" />
+                    <TextBlock x:Name="FileDetailsText" Foreground="#65687A" TextAlignment="Center" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Margin="28,0,28,18" Padding="18" Background="White" CornerRadius="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <CheckBox x:Name="TimestampCheck" Content="Incluir timestamps por segmento"
+                              FontWeight="SemiBold" VerticalContentAlignment="Center" />
+                    <TextBlock Margin="22,4,0,0" Foreground="#65687A" FontSize="12"
+                               Text="Formato: [00:01:23] texto transcrito" />
+                    <ProgressBar x:Name="Progress" Height="8" Margin="0,16,16,0" Minimum="0" Maximum="1" />
+                    <TextBlock x:Name="StatusText" Margin="0,7,0,0" Foreground="#55586A"
+                               Text="Selecione um arquivo para começar." />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="CancelButton" Content="Cancelar" IsEnabled="False" Click="Cancel_Click" />
+                    <Button x:Name="TranscribeButton" Content="Transcrever" IsEnabled="False"
+                            Click="Transcribe_Click" Background="{StaticResource AccentBrush}" Foreground="White" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="3" Margin="28,0,28,18" Padding="18" Background="White" CornerRadius="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="Arquivos gerados" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" />
+                <ListView x:Name="HistoryList" Grid.Row="1" SelectionMode="Single">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Data" Width="130" DisplayMemberBinding="{Binding CreatedAt}" />
+                            <GridViewColumn Header="Original" Width="220" DisplayMemberBinding="{Binding SourceName}" />
+                            <GridViewColumn Header="Modo" Width="130" DisplayMemberBinding="{Binding Mode}" />
+                            <GridViewColumn Header="TXT gerado" Width="260" DisplayMemberBinding="{Binding OutputName}" />
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                    <Button Content="Abrir TXT" Click="OpenOutput_Click" />
+                    <Button Content="Abrir pasta" Click="OpenFolder_Click" />
+                    <Button Content="Remover" Click="RemoveHistory_Click" />
+                    <Button Content="Limpar histórico" Click="ClearHistory_Click" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <TextBlock Grid.Row="4" Margin="28,0,28,18" Foreground="#777A8C" FontSize="11"
+                   Text="Os arquivos são enviados diretamente à OpenAI usando sua chave. O áudio temporário é apagado ao concluir ou cancelar." />
+    </Grid>
+</Window>
