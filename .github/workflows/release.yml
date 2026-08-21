@@ -14,14 +14,15 @@ jobs:
       contents: read
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
           dotnet-version: 8.0.x
       - run: python tests/verify_workflow_security.py
       - run: python tests/verify_release_tag.py
+      - run: python tests/verify_release_publish_script.py --require-pwsh
 
       - name: Define version
         shell: pwsh
@@ -85,7 +86,7 @@ jobs:
           }
 
       - name: Upload installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: whispers-installer
           path: artifacts/installer/Whispers-Setup-x64.exe
@@ -99,7 +100,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Download installer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: whispers-installer
           path: artifacts/installer
@@ -108,8 +109,34 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.sha }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: >-
-          gh release create "$env:RELEASE_TAG"
-          artifacts/installer/Whispers-Setup-x64.exe
-          --verify-tag --generate-notes --title "Whispers $env:RELEASE_TAG"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $encodedTag = [uri]::EscapeDataString($env:RELEASE_TAG)
+          $tagRef = gh api "repos/$env:GH_REPO/git/ref/tags/$encodedTag" --repo "$env:GH_REPO" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Não foi possível consultar a tag de release."
+          }
+          $tagObjectSha = $tagRef.object.sha
+          if ($tagRef.object.type -eq 'tag') {
+            $tagObject = gh api "repos/$env:GH_REPO/git/tags/$tagObjectSha" --repo "$env:GH_REPO" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or $tagObject.object.type -ne 'commit') {
+              throw "A tag de release não aponta para um commit."
+            }
+            $tagCommitSha = $tagObject.object.sha
+          }
+          elseif ($tagRef.object.type -eq 'commit') {
+            $tagCommitSha = $tagObjectSha
+          }
+          else {
+            throw "Tipo de objeto de tag não suportado: $($tagRef.object.type)"
+          }
+          if ($tagCommitSha -ne $env:RELEASE_SHA) {
+            throw "A tag de release não aponta para o commit validado pelo build."
+          }
+          gh release create "$env:RELEASE_TAG" artifacts/installer/Whispers-Setup-x64.exe --repo "$env:GH_REPO" --verify-tag --target "$env:RELEASE_SHA" --generate-notes --title "Whispers $env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Não foi possível criar a GitHub Release."
+          }

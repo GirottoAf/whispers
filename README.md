@@ -58,6 +58,8 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
+As tags de release `v*` são protegidas contra exclusão e force-push. Não mova uma tag já enviada; se uma publicação falhar, corrija o workflow e publique uma nova versão de patch.
+
 ## Estrutura
 
 - `src/Whispers`: aplicativo WPF e pipeline de transcrição;

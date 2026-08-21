@@ -18,7 +18,25 @@ ROOT = Path(__file__).resolve().parents[1]
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 GITHUB_EXPRESSION = re.compile(r"\$\{\{")
-SENSITIVE_EXPRESSION = re.compile(r"\$\{\{\s*(?:github\.token|secrets\.)", re.IGNORECASE)
+IMMUTABLE_ACTION = re.compile(r"^[a-z0-9_.-]+/[a-z0-9_.-]+@[0-9a-f]{40}$")
+
+ACTIONS = {
+    "checkout": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "setup_dotnet": "actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68",
+    "upload_artifact": "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+    "download_artifact": "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+}
+BUILD_GUARD = (
+    "github.event_name == 'push' && github.event.deleted == false && "
+    "github.ref_type == 'tag' && startsWith(github.ref_name, 'v')"
+)
+PUBLISH_GUARD = "needs.build-installer.result == 'success' && " + BUILD_GUARD
+RELEASE_ENV = {
+    "GH_TOKEN": "${{ github.token }}",
+    "GH_REPO": "${{ github.repository }}",
+    "RELEASE_SHA": "${{ github.sha }}",
+    "RELEASE_TAG": "${{ github.ref_name }}",
+}
 
 
 def indent_of(line: str) -> int:
@@ -27,6 +45,8 @@ def indent_of(line: str) -> int:
 
 def parse_scalar(value: str) -> Any:
     value = value.strip()
+    if "#" in value:
+        raise ValueError("Comentários inline não são permitidos no contrato de segurança")
     if value == "{}":
         return {}
     if value.startswith("[") and value.endswith("]"):
@@ -273,28 +293,54 @@ def named_step(steps: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
     return next((step for step in steps if step.get("name") == name), None)
 
 
-def has_explicit_credential_context(step: dict[str, Any]) -> bool:
-    return any(
-        SENSITIVE_EXPRESSION.search(str(value))
+def normalized(value: Any) -> str:
+    return " ".join(str(value).split())
+
+
+def expressions_in_context(step: dict[str, Any]) -> list[str]:
+    return [
+        f"{key}.{name}"
         for key in ("env", "with")
-        for value in as_mapping(step.get(key)).values()
-    )
+        for name, value in as_mapping(step.get(key)).items()
+        if GITHUB_EXPRESSION.search(str(value))
+    ]
 
 
-def validate_checkout_and_runs(workflow_name: str, jobs: dict[str, Any]) -> list[str]:
+def require_no_context_expressions(
+    steps: list[dict[str, Any]], scope: str, errors: list[str], allowed_steps: set[int] | None = None
+) -> None:
+    allowed_steps = allowed_steps or set()
+    for index, step in enumerate(steps):
+        if index in allowed_steps:
+            continue
+        for context in expressions_in_context(step):
+            errors.append(f"{scope}: expressão não permitida em {context}")
+
+
+def validate_actions_and_runs(workflow_name: str, jobs: dict[str, Any]) -> list[str]:
     errors: list[str] = []
+    expected_actions = set(ACTIONS.values())
     for job_name, raw_job in jobs.items():
         job = as_mapping(raw_job)
         for index, step in enumerate(job_steps(job), start=1):
             action = uses(step)
-            if "${{" in action:
-                errors.append(f"{workflow_name}:{job_name}: uses não pode conter expressão dinâmica")
-            if action.startswith("actions/checkout@"):
-                checkout_options = as_mapping(step.get("with"))
-                if checkout_options.get("persist-credentials") != "false":
-                    errors.append(
-                        f"{workflow_name}:{job_name}: checkout #{index} precisa usar persist-credentials: false"
-                    )
+            if action:
+                requires(
+                    bool(IMMUTABLE_ACTION.fullmatch(action)),
+                    f"{workflow_name}:{job_name}: action #{index} precisa estar fixada em SHA completo",
+                    errors,
+                )
+                requires(
+                    action in expected_actions,
+                    f"{workflow_name}:{job_name}: action #{index} não faz parte da allowlist",
+                    errors,
+                )
+            if action == ACTIONS["checkout"]:
+                requires(
+                    as_mapping(step.get("with")).get("persist-credentials") == "false",
+                    f"{workflow_name}:{job_name}: checkout #{index} precisa usar persist-credentials: false",
+                    errors,
+                )
             if GITHUB_EXPRESSION.search(run(step)):
                 errors.append(
                     f"{workflow_name}:{job_name}: expressão GitHub Actions não pode aparecer em run"
@@ -302,20 +348,53 @@ def validate_checkout_and_runs(workflow_name: str, jobs: dict[str, Any]) -> list
     return errors
 
 
+def guard_is_exact(job: dict[str, Any], expected: str, job_name: str, errors: list[str]) -> None:
+    requires(
+        normalized(job.get("if")) == expected,
+        f"release.yml:{job_name} precisa usar somente o guard aprovado",
+        errors,
+    )
+
+
 def requires(condition: bool, message: str, errors: list[str]) -> None:
     if not condition:
         errors.append(message)
 
 
-def guard_is_strict(job: dict[str, Any], job_name: str, errors: list[str]) -> None:
-    guard = str(job.get("if", ""))
+def validate_publisher_run(release_run: str, errors: list[str]) -> None:
     for required in (
-        "github.event_name == 'push'",
-        "github.event.deleted == false",
-        "github.ref_type == 'tag'",
-        "startsWith(github.ref_name, 'v')",
+        "$ErrorActionPreference = 'Stop'",
+        "$encodedTag = [uri]::EscapeDataString($env:RELEASE_TAG)",
+        "git/ref/tags/$encodedTag",
+        "git/tags/$tagObjectSha",
+        "$tagCommitSha -ne $env:RELEASE_SHA",
+        'gh release create "$env:RELEASE_TAG"',
+        'artifacts/installer/Whispers-Setup-x64.exe',
+        '--repo "$env:GH_REPO"',
+        '--target "$env:RELEASE_SHA"',
+        "--verify-tag",
     ):
-        requires(required in guard, f"release.yml:{job_name} não exige {required}", errors)
+        requires(required in release_run, f"publish-release não valida/publica corretamente: {required}", errors)
+    for forbidden in (
+        "start-process",
+        "invoke-expression",
+        "invoke-webrequest",
+        "cmd.exe",
+        "powershell",
+        "pwsh",
+        "python",
+        "dotnet",
+        "choco",
+        "msiexec",
+        "rundll32",
+        "scripts/",
+        "installer/whispers.iss",
+    ):
+        requires(
+            forbidden not in release_run.lower(),
+            f"publish-release não pode executar código, instalador ou ferramenta de build: {forbidden}",
+            errors,
+        )
 
 
 def validate_release(workflow: dict[str, Any]) -> list[str]:
@@ -334,14 +413,15 @@ def validate_release(workflow: dict[str, Any]) -> list[str]:
     )
 
     jobs = as_mapping(workflow.get("jobs"))
+    requires(
+        set(jobs) == {"build-installer", "publish-release"},
+        "release.yml deve conter somente build-installer e publish-release",
+        errors,
+    )
     build = as_mapping(jobs.get("build-installer"))
     publish = as_mapping(jobs.get("publish-release"))
-    requires(bool(build), "release.yml não tem job build-installer", errors)
-    requires(bool(publish), "release.yml não tem job publish-release", errors)
-
-    for job_name, job in (("build-installer", build), ("publish-release", publish)):
-        guard_is_strict(job, job_name, errors)
-
+    guard_is_exact(build, BUILD_GUARD, "build-installer", errors)
+    guard_is_exact(publish, PUBLISH_GUARD, "publish-release", errors)
     requires(
         as_mapping(build.get("permissions")) == {"contents": "read"},
         "build-installer deve ter somente contents: read",
@@ -360,35 +440,13 @@ def validate_release(workflow: dict[str, Any]) -> list[str]:
 
     build_steps = job_steps(build)
     publish_steps = job_steps(publish)
-    requires(
-        any(uses(step).startswith("actions/upload-artifact@") for step in build_steps),
-        "build-installer deve publicar o instalador como artifact",
-        errors,
-    )
-    requires(
-        any(uses(step).startswith("actions/download-artifact@") for step in publish_steps),
-        "publish-release deve baixar o artifact validado",
-        errors,
-    )
-    requires(
-        not any(uses(step).startswith("actions/checkout@") for step in publish_steps),
-        "publish-release não pode executar checkout",
-        errors,
-    )
-    requires(
-        "GH_TOKEN" not in as_mapping(build.get("env"))
-        and not any("GH_TOKEN" in as_mapping(step.get("env")) for step in build_steps)
-        and not any(has_explicit_credential_context(step) for step in build_steps),
-        "build-installer não pode receber token ou segredo explicitamente",
-        errors,
-    )
-
     version_step = named_step(build_steps, "Define version")
+    upload_step = named_step(build_steps, "Upload installer")
     requires(version_step is not None, "build-installer não define a versão", errors)
     if version_step is not None:
         requires(
-            as_mapping(version_step.get("env")).get("RELEASE_TAG") == "${{ github.ref_name }}",
-            "Define version deve receber RELEASE_TAG via env",
+            as_mapping(version_step.get("env")) == {"RELEASE_TAG": "${{ github.ref_name }}"},
+            "Define version deve receber somente RELEASE_TAG via env",
             errors,
         )
         requires(
@@ -396,39 +454,74 @@ def validate_release(workflow: dict[str, Any]) -> list[str]:
             "Define version deve validar a tag sem interpolação direta",
             errors,
         )
+    requires(
+        sum(uses(step) == ACTIONS["checkout"] for step in build_steps) == 1,
+        "build-installer deve usar exatamente um checkout fixado",
+        errors,
+    )
+    requires(
+        sum(uses(step) == ACTIONS["setup_dotnet"] for step in build_steps) == 1,
+        "build-installer deve usar exatamente um setup-dotnet fixado",
+        errors,
+    )
+    requires(upload_step is not None, "build-installer não publica o artifact", errors)
+    if upload_step is not None:
+        requires(
+            uses(upload_step) == ACTIONS["upload_artifact"],
+            "Upload installer deve usar a action de artifact fixada",
+            errors,
+        )
+        requires(
+            as_mapping(upload_step.get("with"))
+            == {
+                "name": "whispers-installer",
+                "path": "artifacts/installer/Whispers-Setup-x64.exe",
+                "if-no-files-found": "error",
+            },
+            "Upload installer deve publicar somente o instalador esperado",
+            errors,
+        )
+    version_index = build_steps.index(version_step) if version_step in build_steps else -1
+    require_no_context_expressions(build_steps, "build-installer", errors, {version_index})
 
+    requires(
+        [step.get("name") for step in publish_steps]
+        == ["Download installer", "Create GitHub Release"],
+        "publish-release deve conter somente download e criação de release",
+        errors,
+    )
+    download_step = named_step(publish_steps, "Download installer")
     release_step = named_step(publish_steps, "Create GitHub Release")
+    requires(download_step is not None, "publish-release não baixa o artifact", errors)
+    if download_step is not None:
+        requires(
+            uses(download_step) == ACTIONS["download_artifact"],
+            "Download installer deve usar a action de artifact fixada",
+            errors,
+        )
+        requires(
+            as_mapping(download_step.get("with"))
+            == {"name": "whispers-installer", "path": "artifacts/installer"},
+            "Download installer deve baixar somente o artifact esperado",
+            errors,
+        )
+        requires(not run(download_step), "Download installer não pode executar script", errors)
+        require_no_context_expressions([download_step], "Download installer", errors)
     requires(release_step is not None, "publish-release não tem etapa de publicação", errors)
     if release_step is not None:
         requires(
-            as_mapping(release_step.get("env"))
-            == {
-                "GH_TOKEN": "${{ github.token }}",
-                "RELEASE_TAG": "${{ github.ref_name }}",
-            },
-            "Create GitHub Release deve receber somente GH_TOKEN e RELEASE_TAG esperados",
+            not uses(release_step),
+            "Create GitHub Release não pode invocar uma action",
             errors,
         )
-    requires(
-        all(step is release_step or not has_explicit_credential_context(step) for step in publish_steps),
-        "publish-release só pode expor token ou segredo na etapa Create GitHub Release",
-        errors,
-    )
-
-    publish_runs = "\n".join(run(step) for step in publish_steps)
-    requires(
-        'gh release create "$env:RELEASE_TAG"' in publish_runs,
-        "publish-release deve publicar somente o artifact validado",
-        errors,
-    )
-    for forbidden in ("scripts/", "dotnet", "installer/Whispers.iss", "choco"):
         requires(
-            forbidden not in publish_runs,
-            f"publish-release não pode executar código de build: {forbidden}",
+            as_mapping(release_step.get("env")) == RELEASE_ENV,
+            "Create GitHub Release deve receber somente os contextos aprovados",
             errors,
         )
+        validate_publisher_run(run(release_step), errors)
 
-    errors.extend(validate_checkout_and_runs("release.yml", jobs))
+    errors.extend(validate_actions_and_runs("release.yml", jobs))
     return errors
 
 
@@ -448,22 +541,24 @@ def validate_ci(workflow: dict[str, Any]) -> list[str]:
     )
 
     jobs = as_mapping(workflow.get("jobs"))
-    for job_name, raw_job in jobs.items():
-        job = as_mapping(raw_job)
-        permissions = as_mapping(job.get("permissions"))
-        requires(
-            permissions.get("contents") != "write",
-            f"ci.yml:{job_name} não pode ter contents: write",
-            errors,
-        )
-        requires(
-            not any(has_explicit_credential_context(step) for step in job_steps(job)),
-            f"ci.yml:{job_name} não pode expor token ou segredo explicitamente",
-            errors,
-        )
-
+    requires(set(jobs) == {"build"}, "ci.yml deve conter somente o job build", errors)
     build = as_mapping(jobs.get("build"))
+    requires(
+        as_mapping(build.get("permissions")) == {},
+        "ci.yml:build não pode ampliar permissões no nível do job",
+        errors,
+    )
     steps = job_steps(build)
+    requires(
+        sum(uses(step) == ACTIONS["checkout"] for step in steps) == 1,
+        "ci.yml deve usar exatamente um checkout fixado",
+        errors,
+    )
+    requires(
+        sum(uses(step) == ACTIONS["setup_dotnet"] for step in steps) == 1,
+        "ci.yml deve usar exatamente um setup-dotnet fixado",
+        errors,
+    )
     for required_name in ("Download verified FFmpeg", "Verify published payload", "Verify installer payload"):
         requires(named_step(steps, required_name) is not None, f"ci.yml não tem etapa {required_name}", errors)
     requires(
@@ -471,7 +566,13 @@ def validate_ci(workflow: dict[str, Any]) -> list[str]:
         "ci.yml deve testar o validador SemVer",
         errors,
     )
-    errors.extend(validate_checkout_and_runs("ci.yml", jobs))
+    requires(
+        any("python tests/verify_release_publish_script.py --require-pwsh" in run(step) for step in steps),
+        "ci.yml deve validar a sintaxe PowerShell do publicador",
+        errors,
+    )
+    require_no_context_expressions(steps, "ci.yml:build", errors)
+    errors.extend(validate_actions_and_runs("ci.yml", jobs))
     return errors
 
 
@@ -483,39 +584,57 @@ def parse_fixture(name: str, contents: str) -> dict[str, Any]:
 
 
 def assert_regression_fixtures(release: dict[str, Any], ci: dict[str, Any]) -> None:
-    ci_marker = "      - name: Download verified FFmpeg"
-    ci_text = CI_WORKFLOW.read_text(encoding="utf-8")
-    assert ci_marker in ci_text
-    insecure_ci = parse_fixture(
-        "ci.yml",
-        ci_text.replace(ci_marker, "      - uses: actions/checkout@v7\n\n" + ci_marker, 1),
-    )
-    assert any("persist-credentials" in error for error in validate_ci(insecure_ci))
+    bypass_guard = copy.deepcopy(release)
+    as_mapping(as_mapping(bypass_guard["jobs"])["build-installer"])["if"] = BUILD_GUARD + " || true"
+    assert any("guard aprovado" in error for error in validate_release(bypass_guard))
 
-    release_marker = "      - name: Upload installer"
-    release_text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
-    assert release_marker in release_text
-    insecure_release = parse_fixture(
-        "release.yml",
-        release_text.replace(
-            release_marker,
-            "      - run: 'echo \\\"${{ github.ref }}\\\"'\n\n" + release_marker,
-            1,
-        ),
-    )
-    assert any("expressão GitHub Actions" in error for error in validate_release(insecure_release))
-
-    token_release = copy.deepcopy(release)
-    as_steps(as_mapping(as_mapping(token_release["jobs"])["build-installer"]).get("steps"))[0]["env"] = {
-        "GH_TOKEN": "${{ github.token }}"
+    extra_writer = copy.deepcopy(release)
+    as_mapping(extra_writer["jobs"])["unexpected-writer"] = {
+        "permissions": {"contents": "write"},
+        "steps": [],
     }
-    assert any("token ou segredo" in error for error in validate_release(token_release))
+    assert any("somente build-installer" in error for error in validate_release(extra_writer))
 
-    with_token_release = copy.deepcopy(release)
-    as_mapping(
-        as_steps(as_mapping(as_mapping(with_token_release["jobs"])["build-installer"]).get("steps"))[0].get("with")
-    )["token"] = "${{ github.token }}"
-    assert any("token ou segredo" in error for error in validate_release(with_token_release))
+    artifact_execution = copy.deepcopy(release)
+    as_steps(as_mapping(as_mapping(artifact_execution["jobs"])["publish-release"]).get("steps")).append(
+        {"name": "Execute installer", "run": "Start-Process artifacts/installer/Whispers-Setup-x64.exe"}
+    )
+    artifact_errors = validate_release(artifact_execution)
+    assert any("somente download" in error or "start-process" in error for error in artifact_errors)
+
+    bracket_token = copy.deepcopy(release)
+    checkout = as_steps(as_mapping(as_mapping(bracket_token["jobs"])["build-installer"]).get("steps"))[0]
+    as_mapping(checkout.get("with"))["token"] = "${{ github['token'] }}"
+    assert any("expressão não permitida" in error for error in validate_release(bracket_token))
+
+    bracket_secret = copy.deepcopy(release)
+    checkout = as_steps(as_mapping(as_mapping(bracket_secret["jobs"])["build-installer"]).get("steps"))[0]
+    as_mapping(checkout.get("with"))["token"] = "${{ secrets['RELEASE_TOKEN'] }}"
+    assert any("expressão não permitida" in error for error in validate_release(bracket_secret))
+
+    mutable_action = copy.deepcopy(release)
+    as_steps(as_mapping(as_mapping(mutable_action["jobs"])["build-installer"]).get("steps"))[0]["uses"] = "actions/checkout@v7"
+    assert any("SHA completo" in error for error in validate_release(mutable_action))
+
+    privileged_ci = copy.deepcopy(ci)
+    as_mapping(as_mapping(privileged_ci["jobs"])["build"])["permissions"] = {
+        "pull-requests": "write",
+        "id-token": "write",
+    }
+    assert any("não pode ampliar permissões" in error for error in validate_ci(privileged_ci))
+
+    release_text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    guard_line = f"    if: {BUILD_GUARD}"
+    assert guard_line in release_text
+    try:
+        inline_comment = parse_fixture(
+            "release.yml",
+            release_text.replace(guard_line, f"    if: true # {BUILD_GUARD}", 1),
+        )
+    except ValueError:
+        pass
+    else:
+        assert any("guard aprovado" in error for error in validate_release(inline_comment))
 
 
 def main() -> int:
