@@ -24,7 +24,10 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 - A única solicitação obrigatória na primeira abertura é a chave da API. A pasta não é solicitada durante a inicialização.
 - Ao tentar transcrever sem destino salvo, o aplicativo abre o seletor nativo do Windows. Se o usuário cancelar, a transcrição não começa.
 - A pasta escolhida fica visível na tela principal, pode ser alterada a qualquer momento e é persistida por usuário.
-- As tags `v0.1.5` e `v0.1.6` não serão reutilizadas. A próxima versão será `v0.1.7`.
+- As versões publicadas não serão reutilizadas. A próxima versão será `v0.1.8`.
+- A pasta escolhida é a única fonte da lista de resultados; não existe histórico paralelo no estado do aplicativo.
+- A listagem considera somente arquivos `.txt` diretamente na pasta escolhida, sem percorrer subpastas, e ordena do mais recente para o mais antigo.
+- A lista é recarregada ao abrir o aplicativo, escolher uma pasta, concluir uma transcrição e clicar em `Atualizar`; não haverá monitoramento contínuo do sistema de arquivos.
 
 ## 3. Requisitos funcionais
 
@@ -35,7 +38,8 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 - Exibir arquivo, tamanho, duração, modo, andamento, cancelamento e mensagens de erro em português.
 - Extrair e normalizar áudio com FFmpeg, dividindo entradas longas em partes abaixo do limite de 25 MB da API.
 - Gerar `arquivo.txt` ou `arquivo_timestamps.txt` sem sobrescrever resultados anteriores.
-- Persistir o histórico de transcrições concluídas e permitir abrir, localizar, remover e limpar entradas.
+- Exibir todos os TXTs da pasta escolhida com as colunas `Data` e `Arquivo TXT`, permitindo abrir o arquivo, abrir a pasta e atualizar a lista.
+- Não oferecer remoção nem limpeza pela interface, para que o aplicativo nunca exclua arquivos do usuário.
 - Persistir a pasta assim que ela for escolhida e reutilizá-la nas próximas execuções sem nova solicitação ou validação preventiva.
 
 ## 4. Arquitetura e contratos
@@ -46,7 +50,8 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 - `POST https://api.openai.com/v1/audio/transcriptions` recebe cada parte sequencialmente com `language=pt`.
 - Modo simples: `model=gpt-transcribe`, JSON. Modo timestamp: `model=whisper-1`, `response_format=verbose_json`, `timestamp_granularities[]=segment`.
 - TXT simples concatena o texto dos chunks. TXT com timestamp usa `[HH:MM:SS] texto`, aplicando o deslocamento global do chunk.
-- `%LocalAppData%\Whispers\app-state.json` contém a chave protegida, o caminho da pasta escolhida e o histórico; o conteúdo transcrito não é armazenado ali.
+- `%LocalAppData%\Whispers\app-state.json` contém somente a chave protegida e o caminho da pasta escolhida; a lista é sempre reconstruída a partir do diretório.
+- A leitura da lista usa as APIs de diretório da biblioteca padrão, considera `*.txt` apenas no nível superior e materializa uma nova coleção para a interface a cada atualização.
 - `TranscriptionWorkflow.RunAsync` recebe explicitamente a pasta de destino; não existe caminho padrão nem resolução de `SpecialFolder.MyDocuments` no fluxo de saída.
 - O instalador contém o payload completo de `dotnet publish --self-contained true -r win-x64`, incluindo runtime .NET/WPF, e `tools\ffmpeg.exe`/`tools\ffprobe.exe`.
 - A instalação não executa gerenciadores de pacote nem baixa dependências; apenas extrai o bundle validado para `%LocalAppData%\Programs\Whispers`.
@@ -57,9 +62,9 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 - Informar que a mídia será enviada à OpenAI antes de salvar a chave.
 - Repetir até três vezes apenas falhas transitórias de rede, HTTP 429 e HTTP 5xx, respeitando `Retry-After`.
 - Cancelar também o FFmpeg e requisições em andamento; sempre apagar arquivos temporários.
-- Escrever o TXT de forma atômica. Falha definitiva não deixa TXT parcial nem entrada no histórico.
+- Escrever o TXT de forma atômica. Falha definitiva não deixa TXT parcial.
 - Se uma pasta já selecionada ficar indisponível posteriormente, a falha normal de gravação é mostrada em português e o usuário pode escolher outro destino; não há nova seleção automática enquanto existir uma opção salva.
-- Desinstalação remove chave, preferência e histórico, mas nunca remove a pasta escolhida nem os TXTs do usuário.
+- Desinstalação remove chave e preferência, mas nunca remove a pasta escolhida nem os TXTs do usuário.
 
 ## 6. Aceitação, testes e distribuição
 
@@ -72,7 +77,8 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 - O smoke test deve iniciar o `Whispers.exe` instalado, confirmar que o processo permanece ativo sem encerramento imediato e então finalizá-lo de forma controlada.
 - A validação deve confirmar que a publicação é self-contained e que o aplicativo instalado usa o runtime .NET empacotado, sem depender de uma instalação global do .NET.
 - O fluxo de transcrição deve permanecer coberto por uma requisição simulada, sem consumo nem dependência da API durante o CI.
-- As verificações cobrem persistência da pasta escolhida, geração do TXT nela e solicitação do seletor somente quando não houver destino salvo.
+- As verificações cobrem persistência da pasta escolhida, geração do TXT nela, solicitação do seletor somente quando não houver destino salvo e listagem dos TXTs do nível superior em ordem decrescente de modificação.
+- A validação da interface confirma a atualização da lista após a conclusão e a ausência dos comandos de remover/limpar.
 - O script do instalador não pode conter `{userdocs}`, `{userprofile}` nem código de criação da pasta de transcrições.
 - Instalação, atualização sobre uma versão existente e desinstalação silenciosas devem terminar com código zero; a desinstalação preserva qualquer pasta de destino e os TXTs do usuário.
 - O instalador inclui runtime .NET, FFmpeg/FFprobe LGPL fixados por URL imutável e SHA-256, atalhos e desinstalador; a pasta de saída não faz parte da instalação.

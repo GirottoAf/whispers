@@ -59,24 +59,6 @@ public sealed class AppStateStore
         Save();
     }
 
-    public void AddHistory(HistoryEntry entry)
-    {
-        State.History.Insert(0, entry);
-        Save();
-    }
-
-    public void RemoveHistory(Guid id)
-    {
-        State.History.RemoveAll(item => item.Id == id);
-        Save();
-    }
-
-    public void ClearHistory()
-    {
-        State.History.Clear();
-        Save();
-    }
-
     private AppState Load()
     {
         if (!File.Exists(_path))
@@ -84,9 +66,7 @@ public sealed class AppStateStore
 
         try
         {
-            var state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(_path), JsonOptions) ?? new AppState();
-            state.History ??= [];
-            return state;
+            return JsonSerializer.Deserialize<AppState>(File.ReadAllText(_path), JsonOptions) ?? new AppState();
         }
         catch (JsonException)
         {

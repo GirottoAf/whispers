@@ -1,25 +1,15 @@
-using System.Text.Json.Serialization;
-
 namespace Whispers;
 
-public sealed record HistoryEntry(
-    Guid Id,
-    string SourcePath,
-    string OutputPath,
-    DateTime CreatedAtUtc,
-    bool HasTimestamps)
+public sealed record TranscriptFile(string FilePath, DateTime ModifiedAtUtc)
 {
-    [JsonIgnore] public string SourceName => Path.GetFileName(SourcePath);
-    [JsonIgnore] public string OutputName => Path.GetFileName(OutputPath);
-    [JsonIgnore] public string Mode => HasTimestamps ? "Com timestamps" : "Texto simples";
-    [JsonIgnore] public string CreatedAt => CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+    public string Name => Path.GetFileName(FilePath);
+    public string ModifiedAt => ModifiedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
 }
 
 public sealed class AppState
 {
     public string? ProtectedApiKey { get; set; }
     public string? OutputDirectory { get; set; }
-    public List<HistoryEntry> History { get; set; } = [];
 }
 
 public sealed record MediaInfo(TimeSpan Duration, long Size);

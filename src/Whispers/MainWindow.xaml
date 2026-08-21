@@ -92,22 +92,19 @@
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <TextBlock Text="Arquivos gerados" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" />
-                <ListView x:Name="HistoryList" Grid.Row="1" SelectionMode="Single">
+                <TextBlock Text="Arquivos TXT na pasta selecionada" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10" />
+                <ListView x:Name="OutputList" Grid.Row="1" SelectionMode="Single">
                     <ListView.View>
                         <GridView>
-                            <GridViewColumn Header="Data" Width="130" DisplayMemberBinding="{Binding CreatedAt}" />
-                            <GridViewColumn Header="Original" Width="220" DisplayMemberBinding="{Binding SourceName}" />
-                            <GridViewColumn Header="Modo" Width="130" DisplayMemberBinding="{Binding Mode}" />
-                            <GridViewColumn Header="TXT gerado" Width="260" DisplayMemberBinding="{Binding OutputName}" />
+                            <GridViewColumn Header="Data" Width="160" DisplayMemberBinding="{Binding ModifiedAt}" />
+                            <GridViewColumn Header="Arquivo TXT" Width="560" DisplayMemberBinding="{Binding Name}" />
                         </GridView>
                     </ListView.View>
                 </ListView>
                 <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
                     <Button Content="Abrir TXT" Click="OpenOutput_Click" />
                     <Button Content="Abrir pasta" Click="OpenFolder_Click" />
-                    <Button Content="Remover" Click="RemoveHistory_Click" />
-                    <Button Content="Limpar histórico" Click="ClearHistory_Click" />
+                    <Button Content="Atualizar" Click="RefreshOutputFiles_Click" />
                 </StackPanel>
             </Grid>
         </Border>

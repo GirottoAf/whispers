@@ -1,5 +1,4 @@
 using Microsoft.Win32;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Windows;
 
@@ -9,7 +8,6 @@ public partial class MainWindow : Window
 {
     private readonly AppStateStore _store = new();
     private readonly MediaProcessor _mediaProcessor = new();
-    private readonly ObservableCollection<HistoryEntry> _history;
     private string? _selectedFile;
     private CancellationTokenSource? _workCancellation;
     private bool _busy;
@@ -17,9 +15,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        _history = new ObservableCollection<HistoryEntry>(_store.State.History);
-        HistoryList.ItemsSource = _history;
         UpdateOutputDirectory();
+        RefreshOutputFiles();
         Loaded += MainWindow_Loaded;
         Closing += (_, _) => _workCancellation?.Cancel();
     }
@@ -47,6 +44,7 @@ public partial class MainWindow : Window
 
         _store.SetOutputDirectory(dialog.FolderName);
         UpdateOutputDirectory();
+        RefreshOutputFiles();
         StatusText.Text = "Pasta de destino salva.";
         return true;
     }
@@ -57,6 +55,27 @@ public partial class MainWindow : Window
         DestinationText.Text = string.IsNullOrWhiteSpace(directory) ? "Nenhuma pasta selecionada" : directory;
         DestinationText.ToolTip = directory;
     }
+
+    private void RefreshOutputFiles()
+    {
+        if (string.IsNullOrWhiteSpace(_store.State.OutputDirectory))
+        {
+            OutputList.ItemsSource = null;
+            return;
+        }
+
+        try
+        {
+            OutputList.ItemsSource = OutputFile.List(_store.State.OutputDirectory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            OutputList.ItemsSource = null;
+            StatusText.Text = "Não foi possível atualizar os arquivos da pasta selecionada.";
+        }
+    }
+
+    private void RefreshOutputFiles_Click(object sender, RoutedEventArgs e) => RefreshOutputFiles();
 
     private bool PromptForKey(bool allowDelete)
     {
@@ -152,9 +171,7 @@ public partial class MainWindow : Window
             var workflow = new TranscriptionWorkflow(_mediaProcessor);
             var outputPath = await workflow.RunAsync(
                 _selectedFile, apiKey, timestamps, _store.State.OutputDirectory!, progress, _workCancellation.Token);
-            var entry = new HistoryEntry(Guid.NewGuid(), _selectedFile, outputPath, DateTime.UtcNow, timestamps);
-            _store.AddHistory(entry);
-            _history.Insert(0, entry);
+            RefreshOutputFiles();
             StatusText.Text = $"Concluído: {Path.GetFileName(outputPath)}";
             Progress.IsIndeterminate = false;
             Progress.Maximum = 1;
@@ -239,14 +256,14 @@ public partial class MainWindow : Window
 
     private void OpenOutput_Click(object sender, RoutedEventArgs e)
     {
-        if (HistoryList.SelectedItem is HistoryEntry entry)
-            OpenPath(entry.OutputPath, false);
+        if (OutputList.SelectedItem is TranscriptFile file)
+            OpenPath(file.FilePath, false);
     }
 
     private void OpenFolder_Click(object sender, RoutedEventArgs e)
     {
-        if (HistoryList.SelectedItem is HistoryEntry entry && Path.GetDirectoryName(entry.OutputPath) is { } directory)
-            OpenPath(directory, true);
+        if (!string.IsNullOrWhiteSpace(_store.State.OutputDirectory))
+            OpenPath(_store.State.OutputDirectory, true);
     }
 
     private void OpenPath(string path, bool directory)
@@ -266,23 +283,6 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "O Windows não conseguiu abrir este item.", "Não foi possível abrir",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-    }
-
-    private void RemoveHistory_Click(object sender, RoutedEventArgs e)
-    {
-        if (HistoryList.SelectedItem is not HistoryEntry entry)
-            return;
-        _store.RemoveHistory(entry.Id);
-        _history.Remove(entry);
-    }
-
-    private void ClearHistory_Click(object sender, RoutedEventArgs e)
-    {
-        if (_history.Count == 0 || MessageBox.Show(this, "Limpar todo o histórico? Os arquivos TXT não serão apagados.",
-                "Limpar histórico", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
-            return;
-        _store.ClearHistory();
-        _history.Clear();
     }
 
     private static string FormatDuration(TimeSpan duration) => duration.TotalHours >= 1
