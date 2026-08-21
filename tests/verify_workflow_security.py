@@ -273,10 +273,11 @@ def named_step(steps: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
     return next((step for step in steps if step.get("name") == name), None)
 
 
-def has_sensitive_environment(step: dict[str, Any]) -> bool:
+def has_explicit_credential_context(step: dict[str, Any]) -> bool:
     return any(
         SENSITIVE_EXPRESSION.search(str(value))
-        for value in as_mapping(step.get("env")).values()
+        for key in ("env", "with")
+        for value in as_mapping(step.get(key)).values()
     )
 
 
@@ -377,7 +378,7 @@ def validate_release(workflow: dict[str, Any]) -> list[str]:
     requires(
         "GH_TOKEN" not in as_mapping(build.get("env"))
         and not any("GH_TOKEN" in as_mapping(step.get("env")) for step in build_steps)
-        and not any(has_sensitive_environment(step) for step in build_steps),
+        and not any(has_explicit_credential_context(step) for step in build_steps),
         "build-installer não pode receber token ou segredo explicitamente",
         errors,
     )
@@ -409,7 +410,7 @@ def validate_release(workflow: dict[str, Any]) -> list[str]:
             errors,
         )
     requires(
-        all(step is release_step or not has_sensitive_environment(step) for step in publish_steps),
+        all(step is release_step or not has_explicit_credential_context(step) for step in publish_steps),
         "publish-release só pode expor token ou segredo na etapa Create GitHub Release",
         errors,
     )
@@ -456,7 +457,7 @@ def validate_ci(workflow: dict[str, Any]) -> list[str]:
             errors,
         )
         requires(
-            not any(has_sensitive_environment(step) for step in job_steps(job)),
+            not any(has_explicit_credential_context(step) for step in job_steps(job)),
             f"ci.yml:{job_name} não pode expor token ou segredo explicitamente",
             errors,
         )
@@ -509,6 +510,12 @@ def assert_regression_fixtures(release: dict[str, Any], ci: dict[str, Any]) -> N
         "GH_TOKEN": "${{ github.token }}"
     }
     assert any("token ou segredo" in error for error in validate_release(token_release))
+
+    with_token_release = copy.deepcopy(release)
+    as_mapping(
+        as_steps(as_mapping(as_mapping(with_token_release["jobs"])["build-installer"]).get("steps"))[0].get("with")
+    )["token"] = "${{ github.token }}"
+    assert any("token ou segredo" in error for error in validate_release(with_token_release))
 
 
 def main() -> int:
