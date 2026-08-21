@@ -8,6 +8,7 @@ public sealed class TranscriptionWorkflow(MediaProcessor mediaProcessor)
         string sourcePath,
         string apiKey,
         bool timestamps,
+        string outputDirectory,
         IProgress<WorkflowProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -41,7 +42,7 @@ public sealed class TranscriptionWorkflow(MediaProcessor mediaProcessor)
         }
 
         progress?.Report(new WorkflowProgress("Salvando o arquivo…", prepared.Chunks.Count, prepared.Chunks.Count));
-        var outputPath = OutputFile.CreateUniquePath(sourcePath, timestamps);
+        var outputPath = OutputFile.CreateUniquePath(sourcePath, timestamps, outputDirectory);
         await OutputFile.WriteAsync(outputPath, text.ToString(), cancellationToken);
         return outputPath;
     }

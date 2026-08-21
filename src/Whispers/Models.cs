@@ -18,6 +18,7 @@ public sealed record HistoryEntry(
 public sealed class AppState
 {
     public string? ProtectedApiKey { get; set; }
+    public string? OutputDirectory { get; set; }
     public List<HistoryEntry> History { get; set; } = [];
 }
 

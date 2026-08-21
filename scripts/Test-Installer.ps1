@@ -15,17 +15,8 @@ if (-not $InstallDirectory.StartsWith($localAppData, [StringComparison]::Ordinal
     throw "O diretório do smoke test deve ser Whispers-ci-* dentro de LocalAppData."
 }
 
-$documentsDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::MyDocuments)
-if ([string]::IsNullOrWhiteSpace($documentsDirectory)) {
-    throw "O Windows não informou a pasta Documentos do usuário."
-}
-
-$outputCandidates = @(
-    (Join-Path $documentsDirectory "Whispers"),
-    (Join-Path $env:USERPROFILE "Documents\Whispers")
-) | Select-Object -Unique
-$outputDirectory = $null
-$markerPath = $null
+$outputDirectory = Join-Path ([IO.Path]::GetTempPath()) "Whispers-output-ci-$env:GITHUB_RUN_ID-$PID"
+$markerPath = Join-Path $outputDirectory "whispers-ci-preserve.txt"
 $appProcess = $null
 $oldDotnetRoot = $env:DOTNET_ROOT
 $oldDotnetRootX64 = $env:DOTNET_ROOT_X64
@@ -49,21 +40,15 @@ function Install-Whispers {
 
 try {
     Remove-Item $InstallDirectory -Recurse -Force -ErrorAction SilentlyContinue
-    if ($outputCandidates | Where-Object { Test-Path $_ }) {
-        throw "Pré-condição inválida: uma pasta de saída do Whispers já existe no runner limpo."
-    }
+    Remove-Item $outputDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item $outputDirectory -ItemType Directory | Out-Null
+    Set-Content -Path $markerPath -Value "preservar" -Encoding utf8
 
     Install-Whispers
     python tests/verify_publish_layout.py $InstallDirectory
     if ($LASTEXITCODE -ne 0) {
         throw "A instalação não contém todas as dependências esperadas."
     }
-    $outputDirectory = $outputCandidates | Where-Object { Test-Path $_ -PathType Container } | Select-Object -First 1
-    if ($null -eq $outputDirectory) {
-        throw "O instalador não criou uma pasta de transcrições."
-    }
-    $markerPath = Join-Path $outputDirectory "whispers-ci-preserve.txt"
-
     foreach ($tool in @("ffmpeg.exe", "ffprobe.exe")) {
         Invoke-CheckedProcess (Join-Path $InstallDirectory "tools\$tool") @("-version")
     }
@@ -83,7 +68,6 @@ try {
     $appProcess.WaitForExit()
     $appProcess = $null
 
-    Set-Content -Path $markerPath -Value "preservar" -Encoding utf8
     Install-Whispers
     if (-not (Test-Path $markerPath -PathType Leaf)) {
         throw "A atualização removeu o TXT de teste."
@@ -108,9 +92,7 @@ finally {
     $env:DOTNET_ROOT_X64 = $oldDotnetRootX64
     $env:DOTNET_MULTILEVEL_LOOKUP = $oldMultilevelLookup
     $env:PATH = $oldPath
-    if ($null -ne $markerPath) {
-        Remove-Item $markerPath -Force -ErrorAction SilentlyContinue
-    }
+    Remove-Item $outputDirectory -Recurse -Force -ErrorAction SilentlyContinue
     if (Test-Path (Join-Path $InstallDirectory "unins000.exe")) {
         Start-Process -FilePath (Join-Path $InstallDirectory "unins000.exe") `
             -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") -Wait

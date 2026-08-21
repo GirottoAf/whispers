@@ -56,6 +56,19 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel>
+                    <TextBlock Text="Pasta de destino" FontWeight="SemiBold" />
+                    <Grid Margin="0,5,16,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="DestinationText" Text="Nenhuma pasta selecionada"
+                                   Foreground="#65687A" TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="Escolher pasta" Margin="12,0,0,0"
+                                Click="ChooseOutputDirectory_Click"
+                                AutomationProperties.Name="Escolher pasta de destino das transcrições" />
+                    </Grid>
                     <CheckBox x:Name="TimestampCheck" Content="Incluir timestamps por segmento"
                               FontWeight="SemiBold" VerticalContentAlignment="Center" />
                     <TextBlock Margin="22,4,0,0" Foreground="#65687A" FontSize="12"

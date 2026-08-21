@@ -17,6 +17,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+INSTALLER_SCRIPT = ROOT / "installer" / "Whispers.iss"
 GITHUB_EXPRESSION = re.compile(r"\$\{\{")
 SENSITIVE_EXPRESSION = re.compile(r"\$\{\{\s*(?:github\.token|secrets\.)", re.IGNORECASE)
 
@@ -533,6 +534,13 @@ def main() -> int:
         return 1
 
     errors = validate_release(release) + validate_ci(ci)
+    installer_text = INSTALLER_SCRIPT.read_text(encoding="utf-8").lower()
+    for forbidden in ("{userdocs}", "{userprofile}", "forcedirectories"):
+        requires(
+            forbidden not in installer_text,
+            f"o instalador não pode gerenciar a pasta de transcrições: {forbidden}",
+            errors,
+        )
     try:
         assert_regression_fixtures(release, ci)
     except (AssertionError, KeyError, IndexError) as error:

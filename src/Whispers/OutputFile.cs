@@ -4,34 +4,12 @@ namespace Whispers;
 
 public static class OutputFile
 {
-    public static string EnsureOutputDirectory(string? preferredDirectory = null, string? fallbackDirectory = null)
+    public static string CreateUniquePath(string sourcePath, bool timestamps, string outputDirectory)
     {
-        preferredDirectory ??= Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Whispers");
-        fallbackDirectory ??= Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Documents", "Whispers");
-
-        try
-        {
-            Directory.CreateDirectory(preferredDirectory);
-            return preferredDirectory;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
-        {
-            Directory.CreateDirectory(fallbackDirectory);
-            return fallbackDirectory;
-        }
-    }
-
-    public static string CreateUniquePath(string sourcePath, bool timestamps, string? outputDirectory = null)
-    {
-        var directory = outputDirectory ?? EnsureOutputDirectory();
-        if (outputDirectory is not null)
-            Directory.CreateDirectory(directory);
         var baseName = Path.GetFileNameWithoutExtension(sourcePath) + (timestamps ? "_timestamps" : "");
-        var candidate = Path.Combine(directory, baseName + ".txt");
+        var candidate = Path.Combine(outputDirectory, baseName + ".txt");
         for (var number = 2; File.Exists(candidate); number++)
-            candidate = Path.Combine(directory, $"{baseName} ({number}).txt");
+            candidate = Path.Combine(outputDirectory, $"{baseName} ({number}).txt");
         return candidate;
     }
 

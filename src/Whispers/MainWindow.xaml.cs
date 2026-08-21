@@ -19,6 +19,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         _history = new ObservableCollection<HistoryEntry>(_store.State.History);
         HistoryList.ItemsSource = _history;
+        UpdateOutputDirectory();
         Loaded += MainWindow_Loaded;
         Closing += (_, _) => _workCancellation?.Cancel();
     }
@@ -31,6 +32,31 @@ public partial class MainWindow : Window
 
     private void ConfigureKey_Click(object sender, RoutedEventArgs e) =>
         PromptForKey(!string.IsNullOrWhiteSpace(_store.State.ProtectedApiKey));
+
+    private void ChooseOutputDirectory_Click(object sender, RoutedEventArgs e) => PromptForOutputDirectory();
+
+    private bool PromptForOutputDirectory()
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Escolha onde salvar as transcrições",
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) != true)
+            return false;
+
+        _store.SetOutputDirectory(dialog.FolderName);
+        UpdateOutputDirectory();
+        StatusText.Text = "Pasta de destino salva.";
+        return true;
+    }
+
+    private void UpdateOutputDirectory()
+    {
+        var directory = _store.State.OutputDirectory;
+        DestinationText.Text = string.IsNullOrWhiteSpace(directory) ? "Nenhuma pasta selecionada" : directory;
+        DestinationText.ToolTip = directory;
+    }
 
     private bool PromptForKey(bool allowDelete)
     {
@@ -98,6 +124,8 @@ public partial class MainWindow : Window
     {
         if (_selectedFile is null)
             return;
+        if (string.IsNullOrWhiteSpace(_store.State.OutputDirectory) && !PromptForOutputDirectory())
+            return;
 
         string? apiKey;
         try
@@ -123,7 +151,7 @@ public partial class MainWindow : Window
         {
             var workflow = new TranscriptionWorkflow(_mediaProcessor);
             var outputPath = await workflow.RunAsync(
-                _selectedFile, apiKey, timestamps, progress, _workCancellation.Token);
+                _selectedFile, apiKey, timestamps, _store.State.OutputDirectory!, progress, _workCancellation.Token);
             var entry = new HistoryEntry(Guid.NewGuid(), _selectedFile, outputPath, DateTime.UtcNow, timestamps);
             _store.AddHistory(entry);
             _history.Insert(0, entry);

@@ -14,19 +14,18 @@ try
     var secondOutput = OutputFile.CreateUniquePath("reuniao.mp4", true, temporaryDirectory);
     Check(Path.GetFileName(secondOutput) == "reuniao_timestamps (2).txt", "nome sem sobrescrita");
 
-    var unavailableDocuments = Path.Combine(temporaryDirectory, "documents-indisponivel");
-    await File.WriteAllTextAsync(unavailableDocuments, "simula redirecionamento inválido");
-    var fallbackOutput = Path.Combine(temporaryDirectory, "perfil", "Documents", "Whispers");
-    Check(OutputFile.EnsureOutputDirectory(
-        Path.Combine(unavailableDocuments, "Whispers"), fallbackOutput) == fallbackOutput,
-        "fallback quando Documentos está indisponível");
-    Check(Directory.Exists(fallbackOutput), "criação do diretório alternativo");
+    var selectedOutput = Path.Combine(temporaryDirectory, "destino-escolhido");
+    Directory.CreateDirectory(selectedOutput);
+    var selectedOutputPath = OutputFile.CreateUniquePath("entrevista.m4a", false, selectedOutput);
+    Check(Path.GetDirectoryName(selectedOutputPath) == selectedOutput, "pasta escolhida para saída");
 
     var store = new AppStateStore(Path.Combine(temporaryDirectory, "state"));
     store.SetApiKey("sk-test-secret");
+    store.SetOutputDirectory(selectedOutput);
     store.AddHistory(new HistoryEntry(Guid.NewGuid(), "entrada.mp3", "saida.txt", DateTime.UtcNow, false));
     var reloaded = new AppStateStore(Path.Combine(temporaryDirectory, "state"));
     Check(reloaded.GetApiKey() == "sk-test-secret", "DPAPI");
+    Check(reloaded.State.OutputDirectory == Path.GetFullPath(selectedOutput), "pasta escolhida persistida");
     Check(reloaded.State.History.Count == 1, "histórico");
     var stateText = await File.ReadAllTextAsync(Path.Combine(temporaryDirectory, "state", "app-state.json"));
     Check(!stateText.Contains("sk-test-secret", StringComparison.Ordinal), "chave não pode ficar em texto puro");
