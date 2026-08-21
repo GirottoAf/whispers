@@ -404,9 +404,10 @@ def validate_release(workflow: dict[str, Any]) -> list[str]:
             as_mapping(release_step.get("env"))
             == {
                 "GH_TOKEN": "${{ github.token }}",
+                "GH_REPO": "${{ github.repository }}",
                 "RELEASE_TAG": "${{ github.ref_name }}",
             },
-            "Create GitHub Release deve receber somente GH_TOKEN e RELEASE_TAG esperados",
+            "Create GitHub Release deve receber somente GH_TOKEN, GH_REPO e RELEASE_TAG esperados",
             errors,
         )
     requires(
@@ -419,6 +420,11 @@ def validate_release(workflow: dict[str, Any]) -> list[str]:
     requires(
         'gh release create "$env:RELEASE_TAG"' in publish_runs,
         "publish-release deve publicar somente o artifact validado",
+        errors,
+    )
+    requires(
+        '--repo "$env:GH_REPO"' in publish_runs,
+        "publish-release deve informar explicitamente o repositório",
         errors,
     )
     for forbidden in ("scripts/", "dotnet", "installer/Whispers.iss", "choco"):

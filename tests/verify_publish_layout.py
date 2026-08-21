@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -17,6 +18,9 @@ REQUIRED_FILES = (
     "PresentationCore.dll",
     "PresentationFramework.dll",
     "WindowsBase.dll",
+    "PresentationNative_cor3.dll",
+    "wpfgfx_cor3.dll",
+    "System.Security.Cryptography.ProtectedData.dll",
     "tools/ffmpeg.exe",
     "tools/ffprobe.exe",
 )
@@ -49,6 +53,16 @@ def main() -> int:
             print("  Ausentes: " + ", ".join(missing), file=sys.stderr)
         if empty:
             print("  Vazios: " + ", ".join(empty), file=sys.stderr)
+        return 1
+
+    runtime_config = json.loads((publish_dir / "Whispers.runtimeconfig.json").read_text(encoding="utf-8"))
+    included_frameworks = {
+        framework.get("name")
+        for framework in runtime_config.get("runtimeOptions", {}).get("includedFrameworks", [])
+    }
+    expected_frameworks = {"Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App"}
+    if not expected_frameworks.issubset(included_frameworks):
+        print("Runtimeconfig não identifica uma publicação .NET/WPF self-contained.", file=sys.stderr)
         return 1
 
     files = [path for path in publish_dir.rglob("*") if path.is_file()]

@@ -30,6 +30,9 @@ Source: "..\artifacts\publish\*"; DestDir: "{app}"; Flags: ignoreversion recurse
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 
+[Dirs]
+Name: "{userdocs}\Whispers"; Flags: uninsneveruninstall
+
 [Icons]
 Name: "{group}\Whispers"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Desinstalar Whispers"; Filename: "{uninstallexe}"
