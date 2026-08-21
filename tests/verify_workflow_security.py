@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 GITHUB_EXPRESSION = re.compile(r"\$\{\{")
+SENSITIVE_EXPRESSION = re.compile(r"\$\{\{\s*(?:github\.token|secrets\.)", re.IGNORECASE)
 
 
 def indent_of(line: str) -> int:
@@ -272,6 +273,13 @@ def named_step(steps: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
     return next((step for step in steps if step.get("name") == name), None)
 
 
+def has_sensitive_environment(step: dict[str, Any]) -> bool:
+    return any(
+        SENSITIVE_EXPRESSION.search(str(value))
+        for value in as_mapping(step.get("env")).values()
+    )
+
+
 def validate_checkout_and_runs(workflow_name: str, jobs: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     for job_name, raw_job in jobs.items():
@@ -368,8 +376,9 @@ def validate_release(workflow: dict[str, Any]) -> list[str]:
     )
     requires(
         "GH_TOKEN" not in as_mapping(build.get("env"))
-        and not any("GH_TOKEN" in as_mapping(step.get("env")) for step in build_steps),
-        "build-installer não pode receber GH_TOKEN explícito",
+        and not any("GH_TOKEN" in as_mapping(step.get("env")) for step in build_steps)
+        and not any(has_sensitive_environment(step) for step in build_steps),
+        "build-installer não pode receber token ou segredo explicitamente",
         errors,
     )
 
@@ -391,15 +400,19 @@ def validate_release(workflow: dict[str, Any]) -> list[str]:
     requires(release_step is not None, "publish-release não tem etapa de publicação", errors)
     if release_step is not None:
         requires(
-            as_mapping(release_step.get("env")).get("GH_TOKEN") == "${{ github.token }}",
-            "Create GitHub Release deve receber GH_TOKEN somente na etapa de publicação",
+            as_mapping(release_step.get("env"))
+            == {
+                "GH_TOKEN": "${{ github.token }}",
+                "RELEASE_TAG": "${{ github.ref_name }}",
+            },
+            "Create GitHub Release deve receber somente GH_TOKEN e RELEASE_TAG esperados",
             errors,
         )
-        requires(
-            as_mapping(release_step.get("env")).get("RELEASE_TAG") == "${{ github.ref_name }}",
-            "Create GitHub Release deve receber RELEASE_TAG via env",
-            errors,
-        )
+    requires(
+        all(step is release_step or not has_sensitive_environment(step) for step in publish_steps),
+        "publish-release só pode expor token ou segredo na etapa Create GitHub Release",
+        errors,
+    )
 
     publish_runs = "\n".join(run(step) for step in publish_steps)
     requires(
@@ -435,10 +448,16 @@ def validate_ci(workflow: dict[str, Any]) -> list[str]:
 
     jobs = as_mapping(workflow.get("jobs"))
     for job_name, raw_job in jobs.items():
-        permissions = as_mapping(as_mapping(raw_job).get("permissions"))
+        job = as_mapping(raw_job)
+        permissions = as_mapping(job.get("permissions"))
         requires(
             permissions.get("contents") != "write",
             f"ci.yml:{job_name} não pode ter contents: write",
+            errors,
+        )
+        requires(
+            not any(has_sensitive_environment(step) for step in job_steps(job)),
+            f"ci.yml:{job_name} não pode expor token ou segredo explicitamente",
             errors,
         )
 
@@ -489,7 +508,7 @@ def assert_regression_fixtures(release: dict[str, Any], ci: dict[str, Any]) -> N
     as_steps(as_mapping(as_mapping(token_release["jobs"])["build-installer"]).get("steps"))[0]["env"] = {
         "GH_TOKEN": "${{ github.token }}"
     }
-    assert any("GH_TOKEN" in error for error in validate_release(token_release))
+    assert any("token ou segredo" in error for error in validate_release(token_release))
 
 
 def main() -> int:
