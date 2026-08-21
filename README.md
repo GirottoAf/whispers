@@ -36,7 +36,7 @@ Requisitos no Windows:
 
 - .NET 8 SDK;
 - PowerShell;
-- Python 3 com PyYAML para verificações de empacotamento e segurança;
+- Python 3 para verificações de empacotamento e segurança;
 - Inno Setup 6 apenas para montar o instalador.
 
 ```powershell
