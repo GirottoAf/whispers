@@ -17,25 +17,29 @@ try
     var selectedOutput = Path.Combine(temporaryDirectory, "destino-escolhido");
     Directory.CreateDirectory(selectedOutput);
     var selectedOutputPath = OutputFile.CreateUniquePath("entrevista.m4a", false, selectedOutput);
+    await File.WriteAllTextAsync(selectedOutputPath, "mais recente");
+    var olderOutputPath = Path.Combine(selectedOutput, "anterior.txt");
+    await File.WriteAllTextAsync(olderOutputPath, "anterior");
+    File.SetLastWriteTimeUtc(olderOutputPath, DateTime.UtcNow.AddMinutes(-2));
+    File.SetLastWriteTimeUtc(selectedOutputPath, DateTime.UtcNow);
+    await File.WriteAllTextAsync(Path.Combine(selectedOutput, "ignorar.md"), "não é TXT");
+    var nestedDirectory = Path.Combine(selectedOutput, "subpasta");
+    Directory.CreateDirectory(nestedDirectory);
+    await File.WriteAllTextAsync(Path.Combine(nestedDirectory, "ignorar.txt"), "subpasta");
     Check(Path.GetDirectoryName(selectedOutputPath) == selectedOutput, "pasta escolhida para saída");
+    var listedOutputs = OutputFile.List(selectedOutput);
+    Check(listedOutputs.Count == 2, "lista somente TXTs do nível superior");
+    Check(listedOutputs[0].FilePath == selectedOutputPath && listedOutputs[1].FilePath == olderOutputPath,
+        "lista TXTs do mais recente para o mais antigo");
 
     var store = new AppStateStore(Path.Combine(temporaryDirectory, "state"));
     store.SetApiKey("sk-test-secret");
     store.SetOutputDirectory(selectedOutput);
-    store.AddHistory(new HistoryEntry(Guid.NewGuid(), "entrada.mp3", "saida.txt", DateTime.UtcNow, false));
     var reloaded = new AppStateStore(Path.Combine(temporaryDirectory, "state"));
     Check(reloaded.GetApiKey() == "sk-test-secret", "DPAPI");
     Check(reloaded.State.OutputDirectory == Path.GetFullPath(selectedOutput), "pasta escolhida persistida");
-    Check(reloaded.State.History.Count == 1, "histórico");
     var stateText = await File.ReadAllTextAsync(Path.Combine(temporaryDirectory, "state", "app-state.json"));
     Check(!stateText.Contains("sk-test-secret", StringComparison.Ordinal), "chave não pode ficar em texto puro");
-
-    var nullHistoryDirectory = Path.Combine(temporaryDirectory, "null-history");
-    Directory.CreateDirectory(nullHistoryDirectory);
-    await File.WriteAllTextAsync(Path.Combine(nullHistoryDirectory, "app-state.json"), "{\"History\":null}");
-    var nullHistoryStore = new AppStateStore(nullHistoryDirectory);
-    nullHistoryStore.AddHistory(new HistoryEntry(Guid.NewGuid(), "entrada.mp3", "saida.txt", DateTime.UtcNow, false));
-    Check(nullHistoryStore.State.History.Count == 1, "histórico nulo deve ser recuperado");
 
     var audioPath = Path.Combine(temporaryDirectory, "chunk.mp3");
     await File.WriteAllBytesAsync(audioPath, [1, 2, 3]);

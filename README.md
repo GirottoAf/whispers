@@ -11,7 +11,7 @@ Aplicativo Windows para transcrever arquivos locais de áudio e vídeo em TXT us
 - timestamps por segmento com `whisper-1`;
 - arquivos longos convertidos e divididos localmente;
 - chave protegida pelo DPAPI do Windows;
-- histórico local dos TXTs gerados;
+- lista dos TXTs existentes na pasta escolhida;
 - instalador único e self-contained para Windows 10/11 x64, com .NET e FFmpeg incluídos.
 
 ## Como usar
@@ -21,7 +21,7 @@ Aplicativo Windows para transcrever arquivos locais de áudio e vídeo em TXT us
 3. Cole uma [chave da API OpenAI](https://platform.openai.com/api-keys). A chave precisa ter acesso à API e faturamento configurado.
 4. Selecione ou arraste um arquivo, escolha se deseja timestamps e clique em **Transcrever**.
 5. Escolha a pasta de destino dentro do programa. Ela ficará salva para as próximas execuções.
-6. O TXT será salvo na pasta escolhida e aparecerá no histórico do aplicativo.
+6. O TXT será salvo na pasta escolhida e aparecerá imediatamente na lista do aplicativo.
 
 Cada usuário utiliza a própria chave e é responsável pelo consumo da API. O arquivo é enviado diretamente à OpenAI; não existe servidor intermediário do Whispers. Áudios temporários são apagados ao concluir, falhar ou cancelar.
 

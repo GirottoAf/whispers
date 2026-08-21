@@ -4,6 +4,13 @@ namespace Whispers;
 
 public static class OutputFile
 {
+    public static IReadOnlyList<TranscriptFile> List(string outputDirectory) =>
+        Directory.EnumerateFiles(outputDirectory, "*.txt", SearchOption.TopDirectoryOnly)
+            .Select(path => new FileInfo(path))
+            .OrderByDescending(file => file.LastWriteTimeUtc)
+            .Select(file => new TranscriptFile(file.FullName, file.LastWriteTimeUtc))
+            .ToList();
+
     public static string CreateUniquePath(string sourcePath, bool timestamps, string outputDirectory)
     {
         var baseName = Path.GetFileNameWithoutExtension(sourcePath) + (timestamps ? "_timestamps" : "");
