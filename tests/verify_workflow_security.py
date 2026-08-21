@@ -17,7 +17,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
-GITHUB_EXPRESSION = re.compile(r"\$\{\{\s*github(?:\.|\s)", re.IGNORECASE)
+GITHUB_EXPRESSION = re.compile(r"\$\{\{")
 
 
 def indent_of(line: str) -> int:
@@ -288,7 +288,7 @@ def validate_checkout_and_runs(workflow_name: str, jobs: dict[str, Any]) -> list
                     )
             if GITHUB_EXPRESSION.search(run(step)):
                 errors.append(
-                    f"{workflow_name}:{job_name}: expressão github.* não pode aparecer em run"
+                    f"{workflow_name}:{job_name}: expressão GitHub Actions não pode aparecer em run"
                 )
     return errors
 
@@ -483,7 +483,7 @@ def assert_regression_fixtures(release: dict[str, Any], ci: dict[str, Any]) -> N
             1,
         ),
     )
-    assert any("expressão github" in error for error in validate_release(insecure_release))
+    assert any("expressão GitHub Actions" in error for error in validate_release(insecure_release))
 
     token_release = copy.deepcopy(release)
     as_steps(as_mapping(as_mapping(token_release["jobs"])["build-installer"]).get("steps"))[0]["env"] = {
