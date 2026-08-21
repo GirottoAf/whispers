@@ -52,6 +52,13 @@ public sealed class AppStateStore
         Save();
     }
 
+    public void SetOutputDirectory(string outputDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
+        State.OutputDirectory = Path.GetFullPath(outputDirectory);
+        Save();
+    }
+
     public void AddHistory(HistoryEntry entry)
     {
         State.History.Insert(0, entry);

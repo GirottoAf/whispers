@@ -39,17 +39,3 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Abrir Whispers"; Flags: nowait 
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{localappdata}\Whispers"
-
-[Code]
-procedure CurStepChanged(CurStep: TSetupStep);
-begin
-  if CurStep = ssPostInstall then
-  begin
-    if not ForceDirectories(ExpandConstant('{userdocs}\Whispers')) then
-    begin
-      Log('A pasta Documentos configurada pelo Windows está indisponível; usando o perfil local.');
-      if not ForceDirectories(ExpandConstant('{userprofile}\Documents\Whispers')) then
-        RaiseException('Não foi possível criar a pasta de transcrições.');
-    end;
-  end;
-end;
