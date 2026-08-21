@@ -2,7 +2,7 @@
 
 ## 1. Objetivo e escopo
 
-Aplicativo desktop em português para Windows 10/11 x64 que transcreve um arquivo local de áudio ou vídeo por vez. A entrada pode ser escolhida no seletor do Windows ou arrastada para a janela. O resultado é um TXT em `Documentos\Whispers`, com timestamps opcionais por segmento.
+Aplicativo desktop em português para Windows 10/11 x64 que transcreve um arquivo local de áudio ou vídeo por vez. A entrada pode ser escolhida no seletor do Windows ou arrastada para a janela. O resultado é um TXT em `Documentos\Whispers`, com timestamps opcionais por segmento. Se essa pasta especial estiver apontando para um local indisponível, como um redirecionamento antigo do OneDrive, o destino alternativo é `%USERPROFILE%\Documents\Whispers`.
 
 Ficam fora da versão inicial: autenticação própria, backend, fila, diarização, SRT/VTT, autoatualização, versão portátil, ARM64 e seleção manual de idioma.
 
@@ -20,7 +20,7 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 - “Bundle” significa um único `Whispers-Setup-x64.exe` para download. Ele pode instalar vários arquivos internos, desde que nenhum runtime, codec ou utilitário precise ser baixado separadamente.
 - O aplicativo instalado deve funcionar em uma instalação limpa do Windows 10/11 x64 sem .NET, FFmpeg, FFprobe, PowerShell, Python, Chocolatey ou Winget previamente instalados.
 - A publicação continuará self-contained e multi-file, pois esse formato permite incluir e validar explicitamente o runtime .NET, as bibliotecas WPF e os executáveis FFmpeg/FFprobe dentro do instalador.
-- A pasta de saída é a mesma resolvida pelo aplicativo em `Environment.SpecialFolder.MyDocuments\Whispers`; o instalador deve criá-la e o aplicativo mantém `Directory.CreateDirectory` como garantia adicional.
+- O instalador e o aplicativo tentam criar `Environment.SpecialFolder.MyDocuments\Whispers`; se o caminho configurado estiver indisponível, ambos usam `%USERPROFILE%\Documents\Whispers`.
 - A tag `v0.1.4` não será reutilizada porque já foi enviada e sua publicação falhou. A próxima versão será `v0.1.5`.
 
 ## 3. Requisitos funcionais
@@ -31,7 +31,7 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 - Extrair e normalizar áudio com FFmpeg, dividindo entradas longas em partes abaixo do limite de 25 MB da API.
 - Gerar `arquivo.txt` ou `arquivo_timestamps.txt` sem sobrescrever resultados anteriores.
 - Persistir o histórico de transcrições concluídas e permitir abrir, localizar, remover e limpar entradas.
-- Criar `Documentos\Whispers` durante a instalação, antes da primeira execução, e recriá-la automaticamente se o usuário a remover.
+- Criar a pasta de transcrições durante a instalação, antes da primeira execução, e recriá-la automaticamente se o usuário a remover, incluindo o fallback quando Documentos estiver indisponível.
 
 ## 4. Arquitetura e contratos
 
@@ -59,7 +59,7 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 - Testes de mídia cobrem áudio, vídeo, ausência de faixa de áudio, formato inválido e múltiplos chunks.
 - GitHub Actions compila e verifica push/PR; tags `v*` criam um único `Whispers-Setup-x64.exe` em GitHub Releases.
 - O payload publicado e a instalação silenciosa devem conter, no mínimo, o executável, `.deps.json`, `.runtimeconfig.json`, `coreclr.dll`, `hostfxr.dll`, `hostpolicy.dll`, `System.Private.CoreLib.dll`, bibliotecas WPF, FFmpeg e FFprobe, todos não vazios.
-- O teste do instalador deve instalá-lo em um diretório limpo, validar o payload instalado e confirmar a existência de `Documentos\Whispers`.
+- O teste do instalador deve instalá-lo em um diretório limpo, validar o payload instalado e confirmar a existência do destino preferencial ou alternativo de transcrições.
 - O smoke test pós-instalação deve executar `ffmpeg.exe -version` e `ffprobe.exe -version` a partir da pasta instalada, ambos com código de saída zero.
 - O smoke test deve iniciar o `Whispers.exe` instalado, confirmar que o processo permanece ativo sem encerramento imediato e então finalizá-lo de forma controlada.
 - A validação deve confirmar que a publicação é self-contained e que o aplicativo instalado usa o runtime .NET empacotado, sem depender de uma instalação global do .NET.
