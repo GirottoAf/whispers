@@ -36,6 +36,7 @@ Requisitos no Windows:
 
 - .NET 8 SDK;
 - PowerShell;
+- Python 3 para verificações de empacotamento e segurança;
 - Inno Setup 6 apenas para montar o instalador.
 
 ```powershell
@@ -43,6 +44,8 @@ pwsh scripts/Get-FFmpeg.ps1
 dotnet restore Whispers.sln
 dotnet build Whispers.sln -c Release
 dotnet run --project tests/Whispers.Checks -c Release
+python tests/verify_release_tag.py
+python tests/verify_workflow_security.py
 dotnet run --project src/Whispers
 ```
 

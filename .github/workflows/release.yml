@@ -8,10 +8,10 @@ permissions:
   contents: read
 
 jobs:
-  release:
-    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+  build-installer:
+    if: github.event_name == 'push' && github.event.deleted == false && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
     permissions:
-      contents: write
+      contents: read
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -21,13 +21,15 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - run: python tests/verify_workflow_security.py
+      - run: python tests/verify_release_tag.py
 
       - name: Define version
         shell: pwsh
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          if ($env:RELEASE_TAG -notmatch '^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$') {
+          python scripts/validate_release_tag.py "$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) {
             throw "Tag de release inválida: $env:RELEASE_TAG"
           }
           "APP_VERSION=$($env:RELEASE_TAG.Substring(1))" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
@@ -81,6 +83,26 @@ jobs:
           finally {
             Remove-Item $installDirectory -Recurse -Force -ErrorAction SilentlyContinue
           }
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: whispers-installer
+          path: artifacts/installer/Whispers-Setup-x64.exe
+          if-no-files-found: error
+
+  publish-release:
+    needs: build-installer
+    if: needs.build-installer.result == 'success' && github.event_name == 'push' && github.event.deleted == false && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    steps:
+      - name: Download installer
+        uses: actions/download-artifact@v4
+        with:
+          name: whispers-installer
+          path: artifacts/installer
 
       - name: Create GitHub Release
         shell: pwsh
