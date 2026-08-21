@@ -65,9 +65,11 @@ jobs:
           Remove-Item $installDirectory -Recurse -Force -ErrorAction SilentlyContinue
           try {
             $installer = (Resolve-Path "artifacts/installer/Whispers-Setup-x64.exe").Path
-            & $installer "/VERYSILENT" "/SUPPRESSMSGBOXES" "/NORESTART" "/SP-" "/DIR=$installDirectory"
-            if ($LASTEXITCODE -ne 0) {
-              throw "O instalador retornou o código $LASTEXITCODE."
+            $installProcess = Start-Process -FilePath $installer -ArgumentList @(
+              "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=$installDirectory"
+            ) -Wait -PassThru
+            if ($installProcess.ExitCode -ne 0) {
+              throw "O instalador retornou o código $($installProcess.ExitCode)."
             }
             python tests/verify_publish_layout.py $installDirectory
             if ($LASTEXITCODE -ne 0) {
