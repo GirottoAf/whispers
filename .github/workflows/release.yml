@@ -2,7 +2,11 @@ name: Release
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -19,7 +23,12 @@ jobs:
       - name: Define version
         shell: pwsh
         run: |
-          "APP_VERSION=$('${{ github.ref_name }}'.TrimStart('v'))" | Out-File $env:GITHUB_ENV -Append
+          $version = if ('${{ github.ref_type }}' -eq 'tag') {
+            '${{ github.ref_name }}'.TrimStart('v')
+          } else {
+            "0.0.0-ci.${{ github.run_number }}"
+          }
+          "APP_VERSION=$version" | Out-File $env:GITHUB_ENV -Append
 
       - name: Download verified FFmpeg
         shell: pwsh
@@ -34,8 +43,11 @@ jobs:
         run: >-
           dotnet publish src/Whispers/Whispers.csproj -c Release -r win-x64
           --self-contained true -o artifacts/publish
-          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:DebugType=None -p:Version=$env:APP_VERSION
+          -p:PublishSingleFile=false -p:DebugType=None -p:Version=$env:APP_VERSION
+
+      - name: Verify published payload
+        shell: pwsh
+        run: python tests/verify_publish_layout.py artifacts/publish
 
       - name: Build installer
         shell: pwsh
@@ -46,7 +58,28 @@ jobs:
           }
           & $iscc "/DMyAppVersion=$env:APP_VERSION" installer/Whispers.iss
 
+      - name: Verify installer payload
+        shell: pwsh
+        run: |
+          $installDirectory = Join-Path $env:LOCALAPPDATA "Whispers-ci-$env:GITHUB_RUN_ID"
+          Remove-Item $installDirectory -Recurse -Force -ErrorAction SilentlyContinue
+          try {
+            $installer = (Resolve-Path "artifacts/installer/Whispers-Setup-x64.exe").Path
+            & $installer "/VERYSILENT" "/SUPPRESSMSGBOXES" "/NORESTART" "/SP-" "/DIR=$installDirectory"
+            if ($LASTEXITCODE -ne 0) {
+              throw "O instalador retornou o código $LASTEXITCODE."
+            }
+            python tests/verify_publish_layout.py $installDirectory
+            if ($LASTEXITCODE -ne 0) {
+              throw "A instalação não contém todas as dependências esperadas."
+            }
+          }
+          finally {
+            Remove-Item $installDirectory -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Create GitHub Release
+        if: github.ref_type == 'tag'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
