@@ -115,13 +115,13 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $encodedTag = [uri]::EscapeDataString($env:RELEASE_TAG)
-          $tagRef = gh api "repos/$env:GH_REPO/git/ref/tags/$encodedTag" --repo "$env:GH_REPO" | ConvertFrom-Json
+          $tagRef = gh api "repos/$env:GH_REPO/git/ref/tags/$encodedTag" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) {
             throw "Não foi possível consultar a tag de release."
           }
           $tagObjectSha = $tagRef.object.sha
           if ($tagRef.object.type -eq 'tag') {
-            $tagObject = gh api "repos/$env:GH_REPO/git/tags/$tagObjectSha" --repo "$env:GH_REPO" | ConvertFrom-Json
+            $tagObject = gh api "repos/$env:GH_REPO/git/tags/$tagObjectSha" | ConvertFrom-Json
             if ($LASTEXITCODE -ne 0 -or $tagObject.object.type -ne 'commit') {
               throw "A tag de release não aponta para um commit."
             }

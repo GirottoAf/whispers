@@ -395,6 +395,11 @@ def validate_publisher_run(release_run: str, errors: list[str]) -> None:
             f"publish-release não pode executar código, instalador ou ferramenta de build: {forbidden}",
             errors,
         )
+    requires(
+        not any("gh api" in line and "--repo" in line for line in release_run.splitlines()),
+        "publish-release não pode passar --repo ao gh api",
+        errors,
+    )
 
 
 def validate_release(workflow: dict[str, Any]) -> list[str]:
