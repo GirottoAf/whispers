@@ -14,6 +14,14 @@ try
     var secondOutput = OutputFile.CreateUniquePath("reuniao.mp4", true, temporaryDirectory);
     Check(Path.GetFileName(secondOutput) == "reuniao_timestamps (2).txt", "nome sem sobrescrita");
 
+    var unavailableDocuments = Path.Combine(temporaryDirectory, "documents-indisponivel");
+    await File.WriteAllTextAsync(unavailableDocuments, "simula redirecionamento inválido");
+    var fallbackOutput = Path.Combine(temporaryDirectory, "perfil", "Documents", "Whispers");
+    Check(OutputFile.EnsureOutputDirectory(
+        Path.Combine(unavailableDocuments, "Whispers"), fallbackOutput) == fallbackOutput,
+        "fallback quando Documentos está indisponível");
+    Check(Directory.Exists(fallbackOutput), "criação do diretório alternativo");
+
     var store = new AppStateStore(Path.Combine(temporaryDirectory, "state"));
     store.SetApiKey("sk-test-secret");
     store.AddHistory(new HistoryEntry(Guid.NewGuid(), "entrada.mp3", "saida.txt", DateTime.UtcNow, false));
