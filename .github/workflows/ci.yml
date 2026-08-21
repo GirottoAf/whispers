@@ -13,9 +13,59 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
+      - run: python tests/verify_workflow_security.py
+
+      - name: Download verified FFmpeg
+        shell: pwsh
+        run: ./scripts/Get-FFmpeg.ps1
+
       - run: dotnet restore Whispers.sln
       - run: dotnet build Whispers.sln -c Release --no-restore
       - run: dotnet run --project tests/Whispers.Checks -c Release --no-build
+
+      - name: Publish application
+        shell: pwsh
+        run: >-
+          dotnet publish src/Whispers/Whispers.csproj -c Release -r win-x64
+          --self-contained true -o artifacts/publish
+          -p:PublishSingleFile=false -p:DebugType=None
+
+      - name: Verify published payload
+        shell: pwsh
+        run: python tests/verify_publish_layout.py artifacts/publish
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          & $iscc installer/Whispers.iss
+
+      - name: Verify installer payload
+        shell: pwsh
+        run: |
+          $installDirectory = Join-Path $env:LOCALAPPDATA "Whispers-ci-$env:GITHUB_RUN_ID"
+          Remove-Item $installDirectory -Recurse -Force -ErrorAction SilentlyContinue
+          try {
+            $installer = (Resolve-Path "artifacts/installer/Whispers-Setup-x64.exe").Path
+            $installProcess = Start-Process -FilePath $installer -ArgumentList @(
+              "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$installDirectory`""
+            ) -Wait -PassThru
+            if ($installProcess.ExitCode -ne 0) {
+              throw "O instalador retornou o código $($installProcess.ExitCode)."
+            }
+            python tests/verify_publish_layout.py $installDirectory
+            if ($LASTEXITCODE -ne 0) {
+              throw "A instalação não contém todas as dependências esperadas."
+            }
+          }
+          finally {
+            Remove-Item $installDirectory -Recurse -Force -ErrorAction SilentlyContinue
+          }
