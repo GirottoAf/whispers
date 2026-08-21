@@ -15,6 +15,14 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 - Apenas a primeira faixa de áudio é usada. O idioma é fixo em português brasileiro (`language=pt`, conforme ISO-639-1).
 - Atualizações são obtidas manualmente no GitHub Releases.
 
+### 2.1 Suposições de trabalho desta revisão
+
+- “Bundle” significa um único `Whispers-Setup-x64.exe` para download. Ele pode instalar vários arquivos internos, desde que nenhum runtime, codec ou utilitário precise ser baixado separadamente.
+- O aplicativo instalado deve funcionar em uma instalação limpa do Windows 10/11 x64 sem .NET, FFmpeg, FFprobe, PowerShell, Python, Chocolatey ou Winget previamente instalados.
+- A publicação continuará self-contained e multi-file, pois esse formato permite incluir e validar explicitamente o runtime .NET, as bibliotecas WPF e os executáveis FFmpeg/FFprobe dentro do instalador.
+- A pasta de saída é a mesma resolvida pelo aplicativo em `Environment.SpecialFolder.MyDocuments\Whispers`; o instalador deve criá-la e o aplicativo mantém `Directory.CreateDirectory` como garantia adicional.
+- A tag `v0.1.4` não será reutilizada porque já foi enviada e sua publicação falhou. A próxima versão será `v0.1.5`.
+
 ## 3. Requisitos funcionais
 
 - Solicitar e salvar a chave da API na primeira abertura; permitir substituí-la ou removê-la depois.
@@ -23,6 +31,7 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 - Extrair e normalizar áudio com FFmpeg, dividindo entradas longas em partes abaixo do limite de 25 MB da API.
 - Gerar `arquivo.txt` ou `arquivo_timestamps.txt` sem sobrescrever resultados anteriores.
 - Persistir o histórico de transcrições concluídas e permitir abrir, localizar, remover e limpar entradas.
+- Criar `Documentos\Whispers` durante a instalação, antes da primeira execução, e recriá-la automaticamente se o usuário a remover.
 
 ## 4. Arquitetura e contratos
 
@@ -32,6 +41,8 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 - Modo simples: `model=gpt-transcribe`, JSON. Modo timestamp: `model=whisper-1`, `response_format=verbose_json`, `timestamp_granularities[]=segment`.
 - TXT simples concatena o texto dos chunks. TXT com timestamp usa `[HH:MM:SS] texto`, aplicando o deslocamento global do chunk.
 - `%LocalAppData%\Whispers\app-state.json` contém a chave protegida e o histórico; o conteúdo transcrito não é armazenado ali.
+- O instalador contém o payload completo de `dotnet publish --self-contained true -r win-x64`, incluindo runtime .NET/WPF, e `tools\ffmpeg.exe`/`tools\ffprobe.exe`.
+- A instalação não executa gerenciadores de pacote nem baixa dependências; apenas extrai o bundle validado para `%LocalAppData%\Programs\Whispers`.
 
 ## 5. Segurança e falhas
 
@@ -46,5 +57,13 @@ Ficam fora da versão inicial: autenticação própria, backend, fila, diarizaç
 
 - Verificações automatizadas cobrem nomes sem colisão, timestamps, persistência/DPAPI, requisições, respostas e retries.
 - Testes de mídia cobrem áudio, vídeo, ausência de faixa de áudio, formato inválido e múltiplos chunks.
-- GitHub Actions compila e verifica push/PR; tags `v*` criam `Whispers-Setup-x64.exe` em GitHub Releases.
-- O instalador inclui runtime .NET, FFmpeg/FFprobe LGPL fixados por URL imutável e SHA-256, atalhos e desinstalador.
+- GitHub Actions compila e verifica push/PR; tags `v*` criam um único `Whispers-Setup-x64.exe` em GitHub Releases.
+- O payload publicado e a instalação silenciosa devem conter, no mínimo, o executável, `.deps.json`, `.runtimeconfig.json`, `coreclr.dll`, `hostfxr.dll`, `hostpolicy.dll`, `System.Private.CoreLib.dll`, bibliotecas WPF, FFmpeg e FFprobe, todos não vazios.
+- O teste do instalador deve instalá-lo em um diretório limpo, validar o payload instalado e confirmar a existência de `Documentos\Whispers`.
+- O smoke test pós-instalação deve executar `ffmpeg.exe -version` e `ffprobe.exe -version` a partir da pasta instalada, ambos com código de saída zero.
+- O smoke test deve iniciar o `Whispers.exe` instalado, confirmar que o processo permanece ativo sem encerramento imediato e então finalizá-lo de forma controlada.
+- A validação deve confirmar que a publicação é self-contained e que o aplicativo instalado usa o runtime .NET empacotado, sem depender de uma instalação global do .NET.
+- O fluxo de transcrição deve permanecer coberto por uma requisição simulada, sem consumo nem dependência da API durante o CI.
+- Instalação, atualização sobre uma versão existente e desinstalação silenciosas devem terminar com código zero; a desinstalação preserva os TXTs em `Documentos\Whispers`.
+- O instalador inclui runtime .NET, FFmpeg/FFprobe LGPL fixados por URL imutável e SHA-256, pasta de saída, atalhos e desinstalador.
+- A publicação do release deve informar explicitamente o repositório ao GitHub CLI e só ocorrer após build, checks, publicação self-contained e teste real do instalador concluírem com sucesso.

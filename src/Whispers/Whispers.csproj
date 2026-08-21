@@ -22,4 +22,9 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </Content>
   </ItemGroup>
+
+  <Target Name="ValidateBundledTools" BeforeTargets="Publish">
+    <Error Condition="!Exists('tools/ffmpeg.exe')" Text="FFmpeg ausente. Execute scripts/Get-FFmpeg.ps1 antes de publicar." />
+    <Error Condition="!Exists('tools/ffprobe.exe')" Text="FFprobe ausente. Execute scripts/Get-FFmpeg.ps1 antes de publicar." />
+  </Target>
 </Project>
